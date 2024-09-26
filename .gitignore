@@ -65,3 +65,6 @@ doc/doxygen/filter.cache
 #emacs backup files
 *~
 
+projects/cylinder_test/cmake/HunterGate.cmake
+projects/cylinder_test/cmake/Hunter/config.cmake
+projects/cylinder_test/meshes/cylinder.msh
