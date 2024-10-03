@@ -37,11 +37,19 @@ int main() {
 
   std::cout << nr_physical_entities << std::endl;
 
+  std::vector<std::pair<lf::base::size_type, std::string>> phys_ent_list{
+      reader.PhysicalEntities(0)};
+  // Search for names and find associated ids
+  auto mesh = reader.mesh();
+  for (const lf::mesh::Entity *cell : mesh->Entities(0)) {
+    std::cout << reader.PhysicalEntityNr(*cell).size();
+
+  }
+
   auto physical_entity_nr_air = reader.PhysicalEntityName2Nr("air");
   auto physical_entity_nr_cylinder = reader.PhysicalEntityName2Nr("cylinder");
 
-  // get pointer to mesh
-  auto mesh = reader.mesh();
+  
 
   lf::io::VtkWriter vtk_writer(mesh, "smiley.vtk");
 
