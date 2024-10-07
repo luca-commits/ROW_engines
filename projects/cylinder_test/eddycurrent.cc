@@ -68,6 +68,16 @@ const Eigen::Matrix<double, 3, 1> ElemVecProvider::Eval(const lf::mesh::Entity &
   return cell_current * area / 3 * Eigen::Vector3d::Ones();
 }
 
+const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &cell){
+  const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
+  Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
+  double cell_current = cell_conductivity_(cell);
+  // std::cout << "cell current: " << cell_current << std::endl;
+  double area =  std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  return cell_conductivity * area / 3 * Eigen::MatrixXd::Identity(3,3);
+}
+
+
 Eigen::VectorXd solve(
     std::shared_ptr<const lf::mesh::Mesh> mesh_p,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_current,

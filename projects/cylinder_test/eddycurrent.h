@@ -46,10 +46,20 @@ class ElemVecProvider{
   public:
   ElemVecProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_current) :
                   cell_current_(cell_current){}
-    bool isActive(const lf::mesh::Entity& cell){return true;}; //maybe change it to only do computations if J != 0 
+    bool isActive(const lf::mesh::Entity& cell){return cell_current != 0;}; //maybe change it to only do computations if J != 0 
     const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
   private:
   lf::mesh::utils::CodimMeshDataSet<double> cell_current_;
+};
+
+class MassMatProvider{
+  public:
+  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity) :
+                  cell_conductivity_(cell_conductivity){}
+    bool isActive(const lf::mesh::Entity& cell){return cell_conductivity_(cell) != 0;}; 
+    const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity &cell);
+  private:
+  lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_;
 };
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
