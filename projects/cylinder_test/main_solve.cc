@@ -2,16 +2,14 @@
 #include "utils.h"
 
 int main(int argc, char *argv[]) {
-    std::cout << "A ------"<< std::endl;
     std::filesystem::path here = __FILE__;
-     auto mesh_path = here.remove_filename() / "meshes/cylinder.msh";
-
-    std::map<int, double> tag_to_current{{1, 0}, {2, 10000000}};
-    std::map<int, double> tag_to_permeability{{1,1}, {2,1}};
+    auto mesh_path = here.remove_filename() / "meshes/cylinder_spherical.msh";
+    std::map<int, double> tag_to_current{{1, 0}, {2, 1}, {3, 0}}; // 1 -> air, 2 -> cylinder
+    std::map<int, double> tag_to_permeability{{1,1}, {2,1}, {3, 1}};
     auto [mesh_p, cell_current, cell_permeability] = eddycurrent::readMeshWithTags(mesh_path, tag_to_current, tag_to_permeability);
     Eigen::VectorXd discrete_solution = eddycurrent::solve(mesh_p, cell_current, cell_permeability);
     auto fe_space_p =
-    std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+     std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
     // Obtain local->global index mapping for current finite element space
     const lf::assemble::DofHandler &dofh{fe_space_p->LocGlobMap()};
     

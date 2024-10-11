@@ -10,6 +10,7 @@
 
 namespace utils{
 
+
 template<class SCALAR_FE, class SCALAR_COEFF> 
 class MeshFunctionCurl2DFE{
     public:
