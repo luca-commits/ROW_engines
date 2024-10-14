@@ -1,5 +1,8 @@
 #include "eddycurrent.h"
+#include "BICG_stab.hpp"
 #include <iomanip> // For std::setw
+#include <cstdlib> // For rand()
+#include <ctime>   // For seeding random generator
 
 
 namespace eddycurrent{
@@ -22,8 +25,9 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
+          lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<double>>
-  readMeshWithTags(std::string filename, std::map<int, double> tag_to_current, std::map<int, double> tag_to_permeability){
+  readMeshWithTags(std::string filename, std::map<int, double> tag_to_current, std::map<int, double> tag_to_permeability, std::map<int, double> tag_to_conductivity){
   // std::cout << "Reading mesh from " << filename << std::endl;
   // Total number of contacts
   const int NPhysGrp = 2;
@@ -38,14 +42,16 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
   // A set of integers associated with edges of the mesh (codim = 0 entities)
   lf::mesh::utils::CodimMeshDataSet<double> cell_current{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_permeability{mesh_p, 0, -1};
+  lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity{mesh_p, 0, -1};
   for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
     LF_ASSERT_MSG(cell->RefEl() == lf::base::RefEl::kTria(),
                   " edge must be a triangle!");
     cell_current(*cell) = tag_to_current[reader.PhysicalEntityNr(*cell)[0]];
     cell_permeability(*cell) = tag_to_permeability[reader.PhysicalEntityNr(*cell)[0]];
+    cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
   }
 
-  return {mesh_p, cell_current, cell_permeability};
+  return {mesh_p, cell_current, cell_permeability, cell_conductivity};
 }
 
 const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity &cell){
@@ -66,7 +72,7 @@ const Eigen::Matrix<double, 3, 1> ElemVecProvider::Eval(const lf::mesh::Entity &
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   double cell_current = cell_current_(cell);
   // std::cout << "cell current: " << cell_current << std::endl;
-  double area =  std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   return cell_current * area / 3 * Eigen::Vector3d::Ones();
 }
 
@@ -74,18 +80,21 @@ const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &
   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   // std::cout << "cell current: " << cell_current << std::endl;
-  double area =  std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   // std::cout << "element mass matrix" <<  std::endl << cell_conductivity * area / 3 * Eigen::MatrixXd::Identity(3,3) << std::endl;
-  lf::mesh::utils::MeshFunctionConstant gamma(1); 	
-  lf::fe::MassElementMatrixProvider massElemMat(fe_space_, gamma);
-  return massElemMat.Eval(cell);
+  // lf::mesh::utils::MeshFunctionConstant gamma(1); 	
+  // lf::fe::MassElementMatrixProvider massElemMat(fe_space_, gamma);
+  //return massElemMat.Eval(cell) * 2;
+  double cell_conductivity = cell_conductivity_(cell);
+  return cell_conductivity * area / 3 * Eigen::MatrixXd::Identity(3,3); 
 }
 
 
 Eigen::VectorXd solve(
     std::shared_ptr<const lf::mesh::Mesh> mesh_p,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
-     lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity
     ) {
 
   std::map<unsigned, std::string> number_to_message {{0, "Success"}, {1, "Numerical Issue"}, {2, "No Convergence"}, {3, "Invalid Input"}};
@@ -109,7 +118,7 @@ Eigen::VectorXd solve(
   // std::cout << "phi\n" << phi << std::endl;
   ElemMatProvider elemMatProv (cell_permeability);
   ElemVecProvider elemVecProv (cell_current);
-  MassMatProvider massMatProv (fe_space);
+  MassMatProvider massMatProv (cell_conductivity);
   // Cell-oriented assembly
   std::cout << "assebling matrix" << std::endl;
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
@@ -128,92 +137,24 @@ Eigen::VectorXd solve(
   Eigen::SparseMatrix<double> I(A_crs.rows(), A_crs.cols());
   I.setIdentity();  // This makes the matrix an identity matrix
 
-  const Eigen::SparseMatrix<double> preconditioner_crs = A_crs + 5e-4 * M_crs;
+  const Eigen::SparseMatrix<double> preconditioner_crs = 0 * A_crs + 1 * M_crs;
+  const Eigen::SparseMatrix<double> preconditioner_matrix = 0 * A_crs + 1* M_crs;
 
-  Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Upper, Eigen::COLAMDOrdering<int> > >bicg_preconditioner;
+  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > cholesky; 
+  cholesky.compute(preconditioner_crs);
 
-  bicg_preconditioner.preconditioner().compute(preconditioner_crs); 
+  Eigen::VectorXd sol_vec(N_dofs);
 
-  bicg_preconditioner.compute(A_crs);
+  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double>> preconditioner;
+  preconditioner.compute(preconditioner_crs);
 
-  bicg_preconditioner.setTolerance(10e-7);
+  sol_vec.setZero();
 
-  // Eigen::VectorXd guess = bicg_preconditioner.solve(phi);
+  BiCGstab(preconditioner_matrix, N_dofs, preconditioner, phi, sol_vec, 1e-7, 1000, 5);
+  double rel_res  = 0;
 
-  unsigned iterations = 1;
-  Eigen::VectorXd guess = Eigen::VectorXd::Zero(N_dofs);
-
-  Eigen::SparseMatrix<double> A_bicg = A_crs;
-  Eigen::SparseMatrix<double> P_bicg = preconditioner_crs;
-
-  Eigen::VectorXd sol_vec;
-
-  for (unsigned i = 0; i < iterations; ++i){
-    // Add the identity matrix instead of M_crs
-    Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>>> bicg;
-    bicg.setMaxIterations(10000); 
-    // bicg.preconditioner().compute(P_bicg); 
-    
-    // Initialize the solver with the matrix
-    bicg.compute(A_bicg);
-
-    // Now, set up your custom preconditioner
-    bicg.preconditioner().compute(preconditioner_crs);
-
-    // Proceed with solving
-    bicg.setTolerance(1e-7);
-    sol_vec = bicg.solveWithGuess(phi, guess);
-    // Eigen::VectorXd sol_vec = bicg.solve(phi);
-    double  rel_residual = (A_bicg * sol_vec - phi).norm() / phi.norm();
-    std::map<unsigned, std::string> number_to_message {{0, "Success"}, {1, "Numerical Issue"}, {2, "No Convergence"}, {3, "Invalid Input"}};
-
-    std::cout << std::setw(10) << "Iteration: " 
-              << std::setw(5) << bicg.iterations() 
-              << std::setw(20) << " Relative Residual: " 
-              << std::setw(10) << rel_residual 
-              << std::setw(20) << " Solver Status: " 
-              << std::setw(15) << number_to_message[bicg.info()] 
-              << std::endl;
-    // guess = sol_vec;
-
-  }
-
-
-  // bicg.setMaxIterations(5000);
-
-  // Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Upper, Eigen::COLAMDOrdering<int> > >bicg;
-
-  // bicg.preconditioner().compute(preconditioner_crs); 
-
-  // bicg.compute(A_crs);
-
-  // bicg.setTolerance(10e-7);
-
-  // Eigen::VectorXd sol_vec = bicg.solveWithGuess(phi, guess);
-
-
-  // double rel_residual = 0;
-
-  // unsigned int iterations = bicg.iterations();
-  // std::cout << "BiCGSTAB solver iterations: " << iterations << std::endl;
-
-
-  // std::cout << "Preconditioner norm " << preconditioner_crs.norm() << std::endl;
-  // std::cout << "System matrix norm " << A_crs.norm() << std::endl;
-
-  std::cout << "relative norm difference: " << (preconditioner_crs.norm() - A_crs.norm()) / preconditioner_crs.norm() << std::endl;
-  std::cout << "preconditioner norm  " <<  preconditioner_crs.norm() << std::endl;
-
-
-  // rel_residual = (A_crs * sol_vec - phi).norm() / phi.norm();
-  // std::cout << "Relative residual BiCGSTAB: " << rel_residual << std::endl;
-
-
-  // std::cout << "solver status " << number_to_message[bicg.info()] << std::endl;
-  // LF_VERIFY_MSG(bicg.info() == Eigen::Success, "BiCGSTAB solver failed");
-
-  // LF_ASSERT_MSG(rel_residual < 10e-7,
-  //               "Solver failed, residual is greater than 10e-7");
+  rel_res = (preconditioner_matrix * sol_vec - phi).norm() / phi.norm();
+  std::cout << "relative residuum " << rel_res << std::endl;
 
   return sol_vec;
 }  // end solveMixedBVP

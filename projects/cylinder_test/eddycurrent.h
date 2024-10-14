@@ -49,28 +49,31 @@ class ElemVecProvider{
     bool isActive(const lf::mesh::Entity& cell){return cell_current_(cell) != 0;}; //maybe change it to only do computations if J != 0 
     const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
   private:
-  lf::mesh::utils::CodimMeshDataSet<double> cell_current_;
+    lf::mesh::utils::CodimMeshDataSet<double> cell_current_;
 };
 
 class MassMatProvider{
   public:
-  MassMatProvider(std::shared_ptr< const lf::fe::ScalarFESpace<double>> fe_space) :
-                  fe_space_(fe_space){}
+  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity) :
+                  cell_conductivity_(cell_conductivity){}
     bool isActive(const lf::mesh::Entity& cell){return true;}; 
     const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity &cell);
   private:
-    std::shared_ptr< const lf::fe::ScalarFESpace<double>> fe_space_;
+    lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_;
 };
 
 
+
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
+          lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
           lf::mesh::utils::CodimMeshDataSet<double>>
-readMeshWithTags(std::string filename, std::map<int, double>, std::map<int, double>);
+readMeshWithTags(std::string filename, std::map<int, double>, std::map<int, double>, std::map<int, double>);
 
 
 Eigen::VectorXd solve(
     std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<double> &,
     lf::mesh::utils::CodimMeshDataSet<double> &,
     lf::mesh::utils::CodimMeshDataSet<double> &);
 
