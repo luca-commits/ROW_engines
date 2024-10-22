@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 
 int main() {
   // abbreviations for types
@@ -26,57 +27,26 @@ int main() {
   using glb_idx_t = lf::assemble::glb_idx_t;
   using coord_t = Eigen::Vector2d;
 
+  std::ofstream out("nodes.txt");
+
   // find path to mesh
   std::filesystem::path here = __FILE__;
-  auto mesh_path = here.remove_filename() / "meshes/cylinder.msh";
-
+  auto mesh_path = here.remove_filename() / "meshes/cylinder_spherical.msh";
   auto mesh_factory = std::make_unique<lf::mesh::hybrid2d::MeshFactory>(2);
   const lf::io::GmshReader reader(std::move(mesh_factory), mesh_path.string());
-
-  unsigned nr_physical_entities = reader.PhysicalEntities(0).size();
-
-  std::cout << nr_physical_entities << std::endl;
-
-  std::vector<std::pair<lf::base::size_type, std::string>> phys_ent_list{
-      reader.PhysicalEntities(0)};
-  // Search for names and find associated ids
   auto mesh = reader.mesh();
-  for (const lf::mesh::Entity *cell : mesh->Entities(0)) {
-    std::cout << reader.PhysicalEntityNr(*cell).size();
-
-  }
-
-  auto physical_entity_nr_air = reader.PhysicalEntityName2Nr("air");
-  auto physical_entity_nr_cylinder = reader.PhysicalEntityName2Nr("cylinder");
-
-  
-
-  lf::io::VtkWriter vtk_writer(mesh, "smiley.vtk");
-
-
-  // write nodal data that takes the value 2 on the eyes and 1 on the mouth,
-  // zero everywhere else.
+  auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh);
+  const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+  lf::io::VtkWriter vtk_writer(mesh, "vtk_files/smiley.vtk");
+  vtk_writer.setBinary(1);
   auto mds = lf::mesh::utils::make_CodimMeshDataSet<int>(mesh, 2, 0);
   // mark the eyes
-  for (const auto* e : mesh->Entities(0)) {
-    if (reader.IsPhysicalEntity(*e, physical_entity_nr_air)) {
-      for (const auto* node : e->SubEntities(2)) {
-        mds->operator()(*node) = 2;
-      }
-    }
-  }
-  // mark the mouth
-  for (const auto* e : mesh->Entities(1)) {
-    if (reader.IsPhysicalEntity(*e, physical_entity_nr_cylinder)) {
-      for (const auto* node : e->SubEntities(1)) {
-        mds->operator()(*node) = 1;
-      }
-    }
+  for (const auto* e : mesh->Entities(2)) {
+    mds->operator()(*e) = 1;
   }
   vtk_writer.WritePointData("smile", *mds);
+  out.close();
 
-
-  auto cell_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh, 1);
-  vtk_writer.WriteCellData("cellData", *cell_data);
+  lf::io::writeTikZ(*mesh, "smiley.tikz", [](const lf::mesh::Entity & e){return true;});
 
 }
