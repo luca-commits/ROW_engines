@@ -15,6 +15,8 @@
 #include <vector>
 #include <tuple> 
 
+#define MU_0 4 * M_PI * 1e-7
+
 namespace eddycurrent{
 
 /** @brief Computation of gradients of barycentric coordinate functions. Taken from the homeworks repository
@@ -76,6 +78,16 @@ Eigen::VectorXd solve(
     lf::mesh::utils::CodimMeshDataSet<double> &,
     lf::mesh::utils::CodimMeshDataSet<double> &,
     lf::mesh::utils::CodimMeshDataSet<double> &);
+
+std::tuple<const Eigen::SparseMatrix<double>, 
+           const Eigen::SparseMatrix<double>, 
+           Eigen::VectorXd
+          > A_M_phi_assembler(
+    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<double> &,
+    lf::mesh::utils::CodimMeshDataSet<double> &,
+    lf::mesh::utils::CodimMeshDataSet<double> &
+  );
 
 } //namespace eddycurrent
 
