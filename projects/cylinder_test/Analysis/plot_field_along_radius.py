@@ -3,24 +3,36 @@ import matplotlib.pyplot as plt
 import numpy as np
 import copy
 
-dataframe = pd.read_csv("B_field_along_r_0.05.csv")
+mu = 0.999994 * 4 * np.pi * 1e-7
 
+# Load the data from the CSV file
+# dataframe_004_spherical = pd.read_csv("transient/conductivity_10000.csv")
+dataframe_004_spherical = pd.read_csv("transient/conductivity_10000.csv")
+
+# Filter the dataframe to include only rows where the arc_length is less than 10
+dataframe_004_spherical = dataframe_004_spherical[dataframe_004_spherical['arc_length'] < 5]
+
+# Initialize the analytic array with zeros, using the same index as the dataframe
+analytic = copy.deepcopy(dataframe_004_spherical['arc_length']) * (mu / 2)
+
+# Calculate the inverse of the arc_length for values where arc_length > circle_radius
 circle_radius = 1
+arc_length = dataframe_004_spherical['arc_length']
 
+# Create a boolean mask for the condition arc_length > circle_radius
+mask = arc_length > circle_radius
 
-analytic = copy.deepcopy(dataframe['arc_length']) * 6e6
-one_over_r = 3e13 / (analytic )
-analytic[dataframe['arc_length'] > circle_radius] = one_over_r[dataframe['arc_length'] > circle_radius]
-
-analytic_sq = copy.deepcopy(dataframe['arc_length']) * 6e6
-one_over_r_sq = 6e19 / (analytic_sq )**2
-analytic_sq[dataframe['arc_length'] > circle_radius] = one_over_r_sq[dataframe['arc_length'] > circle_radius]
-
+# Calculate one_over_r for the arc_length values that meet the condition
+analytic[mask] = (mu /2 ) / arc_length[mask]
 
 plt.Figure()
-B_magnitude = (dataframe['B:0'].apply(np.square) + dataframe['B:1'].apply(np.square)).apply(np.sqrt)
-plt.plot(dataframe['arc_length'], B_magnitude)
-plt.plot(dataframe['arc_length'], analytic)
+B_magnitude_004_spherical = (dataframe_004_spherical['B:0'].apply(np.square) + dataframe_004_spherical['B:1'].apply(np.square)).apply(np.sqrt)
+B_magnitude_004_spherical = B_magnitude_004_spherical
+
+plt.plot(arc_length, analytic, label="analytic solution")
+plt.plot(dataframe_004_spherical['arc_length'], B_magnitude_004_spherical, label="mesh size 0.04, spherical air box")
+plt.legend()
+plt.savefig("B_field_for_various_meshes.png")
 # plt.plot(dataframe['arc_length'], analytic_sq)
 plt.show()
  
