@@ -1,4 +1,9 @@
 #include "eddycurrent.h"
+#include "BICG_stab.hpp"
+#include <iomanip> // For std::setw
+#include <cstdlib> // For rand()
+#include <ctime>   // For seeding random generator
+
 
 namespace eddycurrent{
 
@@ -20,9 +25,10 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
+          lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<double>>
-  readMeshWithTags(std::string filename, std::map<int, double> tag_to_current, std::map<int, double> tag_to_permeability){
-  std::cout << "Reading mesh from " << filename << std::endl;
+  readMeshWithTags(std::string filename, std::map<int, double> tag_to_current, std::map<int, double> tag_to_permeability, std::map<int, double> tag_to_conductivity){
+  // std::cout << "Reading mesh from " << filename << std::endl;
   // Total number of contacts
   const int NPhysGrp = 2;
   // load the mesh from a .msh file produced by Gmsh
@@ -36,14 +42,15 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
   // A set of integers associated with edges of the mesh (codim = 0 entities)
   lf::mesh::utils::CodimMeshDataSet<double> cell_current{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_permeability{mesh_p, 0, -1};
+  lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity{mesh_p, 0, -1};
   for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
     LF_ASSERT_MSG(cell->RefEl() == lf::base::RefEl::kTria(),
                   " edge must be a triangle!");
     cell_current(*cell) = tag_to_current[reader.PhysicalEntityNr(*cell)[0]];
     cell_permeability(*cell) = tag_to_permeability[reader.PhysicalEntityNr(*cell)[0]];
+    cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
   }
-
-  return {mesh_p, cell_current, cell_permeability};
+  return {mesh_p, cell_current, cell_permeability, cell_conductivity};
 }
 
 const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity &cell){
@@ -64,15 +71,33 @@ const Eigen::Matrix<double, 3, 1> ElemVecProvider::Eval(const lf::mesh::Entity &
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   double cell_current = cell_current_(cell);
   // std::cout << "cell current: " << cell_current << std::endl;
-  double area =  std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   return cell_current * area / 3 * Eigen::Vector3d::Ones();
 }
+
+const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &cell){
+  const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
+  Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
+  // std::cout << "cell current: " << cell_current << std::endl;
+  double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  // std::cout << "element mass matrix" <<  std::endl << cell_conductivity * area / 3 * Eigen::MatrixXd::Identity(3,3) << std::endl;
+  // lf::mesh::utils::MeshFunctionConstant gamma(1); 	
+  // lf::fe::MassElementMatrixProvider massElemMat(fe_space_, gamma);
+  //return massElemMat.Eval(cell) * 2;
+  double cell_conductivity = cell_conductivity_(cell);
+  return cell_conductivity * area / 3 * Eigen::MatrixXd::Identity(3,3); 
+}
+
 
 Eigen::VectorXd solve(
     std::shared_ptr<const lf::mesh::Mesh> mesh_p,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
-     lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability
-    ) {
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity
+    ) 
+  {
+
+  std::cout << "Refactored solve " << std::endl;
   auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
   // Obtain local->global index mapping for current finite element space
   const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
@@ -80,37 +105,95 @@ Eigen::VectorXd solve(
   const lf::base::size_type N_dofs(dofh.NumDofs());
   LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
                 " N_dofs must agree with number of nodes");
-  std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
+  // std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
+
+  auto [A_crs, M_crs, phi] = A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
+
+  const Eigen::SparseMatrix<double> preconditioner_crs = 1 * A_crs + 1e-5 * M_crs;
+
+  Eigen::VectorXd sol_vec(N_dofs);
+
+  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double>> preconditioner;
+  preconditioner.compute(preconditioner_crs);
+
+  sol_vec.setZero();
+
+  BiCGstab(A_crs, N_dofs, preconditioner, phi, sol_vec, 1e-7, 1000, 2);
+  double rel_res  = 0;
+  rel_res = (A_crs * sol_vec - phi).norm() / phi.norm();
+  std::cout << "relative residuum " << rel_res << std::endl;  
+
+  return sol_vec;
+}  // end solveMixedBVP
+
+
+std::tuple<const Eigen::SparseMatrix<double>, 
+           const Eigen::SparseMatrix<double>, 
+           Eigen::VectorXd> A_M_phi_assembler
+    (
+    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity 
+    )
+{
+
+  auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+  // Obtain local->global index mapping for current finite element space
+  const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+  // Dimension of finite element space = number of nodes of the mesh
+  const lf::base::size_type N_dofs(dofh.NumDofs());
+  LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
+                " N_dofs must agree with number of nodes");
+  // std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
   // Matrix in triplet format holding Galerkin matrix, zero initially.
   lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
+  lf::assemble::COOMatrix<double> M(N_dofs, N_dofs);
   // Right-hand side vector
   Eigen::VectorXd phi(N_dofs);
   phi.setZero();
+  double alpha = 1;
   // std::cout << "phi\n" << phi << std::endl;
   ElemMatProvider elemMatProv (cell_permeability);
-  ElemVecProvider elemVecProv (cell_current) ;
+  ElemVecProvider elemVecProv (cell_current);
+  MassMatProvider massMatProv (cell_conductivity);
   // Cell-oriented assembly
-  std::cout << "assebling matrix" << std::endl;
+  // std::cout << "assebling matrix" << std::endl;
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
+  lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv, M);
   lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv, phi);
 
-  // Assembly completed: Convert COO matrix A into CRS format using Eigen's
-  // internal conversion routines.
+  auto bd_flags {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
+
+  std::vector<std::pair <long, double>> ess_dof_select {};
+  for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+    const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
+    const Eigen::Vector2d node_pos {
+    lf::geometry::Corners(*dof_node.Geometry()).col(0)}; 
+    Eigen::Vector2d upper_node;
+    upper_node << -5, 0;
+    if (bd_flags(dof_node)) {
+      // Dof associated with a entity on the boundary: "essential dof" 
+      ess_dof_select.emplace_back ( true , 0 ) ; 
+    } else {  
+      // Interior node, also store value of solution for comparison purposes
+      ess_dof_select.emplace_back ( false , 0 ) ; 
+    }
+  }                                 
+  Eigen::VectorXd phi_copy = phi;    
+  // Eigen::VectorXd useless = Eigen::VectorXd::Zero(N_dofs);
+  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, A, useless);
+  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, M, useless);
+  lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, A, phi);
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &M, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, M, phi_copy);
+
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
+  const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
 
-  std::cout << "solving qr" << std::endl;
-  Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> qr;
-  qr.compute(A_crs);
-  Eigen::VectorXd sol_vec = qr.solve(phi);
-  std::cout << "finished solving qr" << std::endl ;
-
-
-  // LF_VERIFY_MSG(solver.info() == Eigen::Success, "LU decomposition failed");
-  // // std::cout << "phi \n" << phi << std::endl;
-  // // Eigen::VectorXd sol_vec = solver.solve(phi);
-  // LF_VERIFY_MSG(solver.info() == Eigen::Success, "Solving LSE failed");
-  //std::cout << "sol vec \n" << sol_vec << std::endl;
-  return sol_vec;
-}  // end solveMixedBVP
+  
+  return {A_crs, M_crs, phi};
+}
 
 } // namespace eddycurrent
