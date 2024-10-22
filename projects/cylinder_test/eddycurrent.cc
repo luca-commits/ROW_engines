@@ -50,7 +50,6 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
     cell_permeability(*cell) = tag_to_permeability[reader.PhysicalEntityNr(*cell)[0]];
     cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
   }
-
   return {mesh_p, cell_current, cell_permeability, cell_conductivity};
 }
 
@@ -146,7 +145,7 @@ std::tuple<const Eigen::SparseMatrix<double>,
   const lf::base::size_type N_dofs(dofh.NumDofs());
   LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
                 " N_dofs must agree with number of nodes");
-  std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
+  // std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
   // Matrix in triplet format holding Galerkin matrix, zero initially.
   lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
   lf::assemble::COOMatrix<double> M(N_dofs, N_dofs);
@@ -159,43 +158,42 @@ std::tuple<const Eigen::SparseMatrix<double>,
   ElemVecProvider elemVecProv (cell_current);
   MassMatProvider massMatProv (cell_conductivity);
   // Cell-oriented assembly
-  std::cout << "assebling matrix" << std::endl;
+  // std::cout << "assebling matrix" << std::endl;
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv, M);
   lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv, phi);
 
+  auto bd_flags {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
 
-
-  // Assembly completed: Convert COO matrix A into CRS format using Eigen's
-  // internal conversion routines.
+  std::vector<std::pair <long, double>> ess_dof_select {};
+  for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+    const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
+    const Eigen::Vector2d node_pos {
+    lf::geometry::Corners(*dof_node.Geometry()).col(0)}; 
+    Eigen::Vector2d upper_node;
+    upper_node << -5, 0;
+    if (bd_flags(dof_node)) {
+      // Dof associated with a entity on the boundary: "essential dof" 
+      ess_dof_select.emplace_back ( true , 0 ) ; 
+    } else {  
+      // Interior node, also store value of solution for comparison purposes
+      ess_dof_select.emplace_back ( false , 0 ) ; 
+    }
+  }                                 
+  Eigen::VectorXd phi_copy = phi;    
+  // Eigen::VectorXd useless = Eigen::VectorXd::Zero(N_dofs);
+  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, A, useless);
+  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, M, useless);
+  lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, A, phi);
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &M, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, M, phi_copy);
 
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
 
-  // Create an identity matrix of the same size as A_crs
-  Eigen::SparseMatrix<double> I(A_crs.rows(), A_crs.cols());
-  I.setIdentity();  // This makes the matrix an identity matrix
-
-  const Eigen::SparseMatrix<double> preconditioner_crs = 0 * A_crs + 1 * M_crs;
-  const Eigen::SparseMatrix<double> preconditioner_matrix = 0 * A_crs + 1* M_crs;
-
-  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > cholesky; 
-  cholesky.compute(preconditioner_crs);
-
-  Eigen::VectorXd sol_vec(N_dofs);
-
-  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double>> preconditioner;
-  preconditioner.compute(preconditioner_crs);
-
-  sol_vec.setZero();
-
-  BiCGstab(preconditioner_matrix, N_dofs, preconditioner, phi, sol_vec, 1e-7, 1000, 5);
-  double rel_res  = 0;
-
-  rel_res = (preconditioner_matrix * sol_vec - phi).norm() / phi.norm();
-  std::cout << "relative residuum " << rel_res << std::endl;
-
-  return sol_vec;
-}  // end solveMixedBVP
+  
+  return {A_crs, M_crs, phi};
+}
 
 } // namespace eddycurrent
