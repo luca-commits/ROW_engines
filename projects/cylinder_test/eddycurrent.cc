@@ -95,10 +95,49 @@ Eigen::VectorXd solve(
     lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
     lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity
-    ) {
+    ) 
+  {
 
-  std::map<unsigned, std::string> number_to_message {{0, "Success"}, {1, "Numerical Issue"}, {2, "No Convergence"}, {3, "Invalid Input"}};
+  std::cout << "Refactored solve " << std::endl;
+  auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+  // Obtain local->global index mapping for current finite element space
+  const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+  // Dimension of finite element space = number of nodes of the mesh
+  const lf::base::size_type N_dofs(dofh.NumDofs());
+  LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
+                " N_dofs must agree with number of nodes");
+  // std::cout << "Solving BVP with " << N_dofs << " FE dofs" << std::endl;
 
+  auto [A_crs, M_crs, phi] = A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
+
+  const Eigen::SparseMatrix<double> preconditioner_crs = 1 * A_crs + 1e-5 * M_crs;
+
+  Eigen::VectorXd sol_vec(N_dofs);
+
+  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double>> preconditioner;
+  preconditioner.compute(preconditioner_crs);
+
+  sol_vec.setZero();
+
+  BiCGstab(A_crs, N_dofs, preconditioner, phi, sol_vec, 1e-7, 1000, 2);
+  double rel_res  = 0;
+  rel_res = (A_crs * sol_vec - phi).norm() / phi.norm();
+  std::cout << "relative residuum " << rel_res << std::endl;  
+
+  return sol_vec;
+}  // end solveMixedBVP
+
+
+std::tuple<const Eigen::SparseMatrix<double>, 
+           const Eigen::SparseMatrix<double>, 
+           Eigen::VectorXd> A_M_phi_assembler
+    (
+    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity 
+    )
+{
 
   auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
   // Obtain local->global index mapping for current finite element space
