@@ -10,6 +10,7 @@ set(SOURCES
   eddycurrent_time_dependent.cc
   implicit_euler.h
   utils.h
+  BICG_stab.hpp
 )
 
 # Define executable for solving eddy current problem (steady-state)
@@ -17,6 +18,24 @@ add_executable(projects.cylinder_test.solve_eddy main_solve.cc ${SOURCES})
 
 # Define executable for solving eddy current problem (time-dependent)
 add_executable(projects.cylinder_test.solve_eddy_td timestepping_main.cc ${SOURCES})
+
+add_executable(projects.cylinder_test.read_mesh read_cylinder_mesh.cc)
+
+# Link executables with required modules and BLAS
+target_link_libraries(projects.cylinder_test.read_mesh
+  PUBLIC Boost::program_options Eigen3::Eigen
+  lf.assemble
+  lf.base
+  lf.geometry
+  lf.io
+  lf.mesh
+  lf.mesh.hybrid2d
+  lf.mesh.test_utils
+  lf.mesh.utils
+  lf.refinement
+  lf.uscalfe
+  BLAS::BLAS
+)
 
 # Link executables with required modules and BLAS
 target_link_libraries(projects.cylinder_test.solve_eddy
