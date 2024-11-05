@@ -11,7 +11,6 @@
 Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const Eigen::SparseMatrix<double>& M, double timestep, const Eigen::VectorXd & current_step, const Eigen::VectorXd & load_vector){
     // Eigen::SparseMatrix<double> Id(load_vector.size(), load_vector.size());
     // Id.setZero(); 
-    // std::cout << "M " << std::endl << M << std::endl;
     Eigen::SparseMatrix<double> lhs = timestep * A + M;
     Eigen::VectorXd rhs = M * current_step + timestep * load_vector; 
     lf::assemble::dim_t N_dofs = load_vector.size();
@@ -21,7 +20,6 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const 
     solver.compute(lhs);
     next_timestep = solver.solve(rhs);
 
-    // std::cout << "rhs " << std::endl << rhs << std::endl;
 
     double rel_res = 0.0;
     if (rhs.norm() != 0) {
@@ -30,7 +28,7 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const 
             LF_ASSERT_MSG(rel_res < 1e-7, "Solver failed, residual is greater than 1e-7");
         }
     } else {
-        std::cout <<"Not normalized residuum " <<  lhs * next_timestep - rhs << std::endl;
+        std::cout <<"Solution vector is 0" << std::endl;
     }
 
     return next_timestep;
