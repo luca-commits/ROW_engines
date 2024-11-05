@@ -87,3 +87,12 @@ projects/cylinder_test/Analysis/B_field_along_r_spejerical_0.01_5_rad_100_new_ma
 projects/cylinder_test/Analysis/B_field_along_r_0.03_0.8.csv
 projects/cylinder_test/Analysis/B_field_along_0.4_3_box-100.csv
 .vscode/settings.json
+
+*.msh
+*.geo
+projects/cylinder_test/meshes/cylinder_spherical_ring.geo
+projects/cylinder_test/meshes/cylinder_spherical_ring.geo
+projects/cylinder_test/meshes/rotating/cylinder_smooth_ring/cylinder_irregular_ring.zip
+projects/cylinder_test/meshes/cylinder_spherical_ring.geo
+projects/cylinder_test/meshes/cylinder_spherical_ring.geo
+projects/cylinder_test/rotational_meshing_experiments/box_sphere.py
