@@ -41,14 +41,16 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
   lf::mesh::utils::CodimMeshDataSet<double> cell_current{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_permeability{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity{mesh_p, 0, -1};
+  lf::mesh::utils::CodimMeshDataSet<unsigned> cell_subdomains{mesh_p, 0, -1};
   for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
     LF_ASSERT_MSG(cell->RefEl() == lf::base::RefEl::kTria(),
                   " edge must be a triangle!");
     cell_current(*cell) = tag_to_current[reader.PhysicalEntityNr(*cell)[0]];
     cell_permeability(*cell) = tag_to_permeability[reader.PhysicalEntityNr(*cell)[0]];
     cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
+    cell_subdomain(*cell) = reader.PhysicalEntityNr(*cell)[0];
   }
-  return {mesh_p, cell_current, cell_permeability, cell_conductivity};
+  return {mesh_p, cell_current, cell_permeability, cell_conductivity, cell_subdomain};
 }
 
 const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity &cell){
@@ -154,10 +156,6 @@ std::tuple<const Eigen::SparseMatrix<double>,
   std::vector<std::pair <long, double>> ess_dof_select {};
   for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
     const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
-    const Eigen::Vector2d node_pos {
-    lf::geometry::Corners(*dof_node.Geometry()).col(0)}; 
-    Eigen::Vector2d upper_node;
-    upper_node << -5, 0;
     if (bd_flags(dof_node)) {
       // Dof associated with a entity on the boundary: "essential dof" 
       ess_dof_select.emplace_back ( true , 0 ) ; 

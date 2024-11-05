@@ -65,27 +65,46 @@ int main (int argc, char *argv[]){
     std::cout << "Mesh Path :" << final_mesh << std::endl;
     mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh);    
 
-    auto mesh_factory = std::make_unique<lf::mesh::hybrid2d::MeshFactory>(2);
-    std::cout << "Reading mesh from " << final_mesh << std::endl;
-    lf::io::GmshReader reader_temp(std::move(mesh_factory), final_mesh);
-    std::shared_ptr<const lf::mesh::Mesh> mesh_p_temp{reader_temp.mesh()};
-
-    auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
-    // Obtain local->global index mapping for current finite element space
-    const lf::assemble::DofHandler &dofh_temp{fe_space_temp->LocGlobMap()};
-    // Dimension of finite element space = number of nodes of the mesh
-    const lf::base::size_type N_dofs(dofh_temp.NumDofs());
-
-
-    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring
     std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}};
     std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}};
+    std::map<int, double> tag_to_domain{{1, 0}, {2, 0}, {3, conductivity_ring}};
     double angle_step = M_PI / 360 ; 
 
-  
+    auto [mesh_p, cell_current, cell_permeability, cell_conductivity, cell_subdomain]
+         = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity, tag_to_domain);
+
+    lf::assemble::COOMatrix<double> A_11(N_dofs, N_dofs);
+    lf::assemble::COOMatrix<double> A_22(N_dofs, N_dofs);
+    lf::assemble::COOMatrix<double> M_11(N_dofs, N_dofs);
+    lf::assemble::COOMatrix<double> M_12(N_dofs, N_dofs);
+    // Right-hand side vector
+    Eigen::VectorXd phi_11(N_dofs_11);
+    Eigen::VectorXd phi_22(N_dofs_22);
+    phi_11.setZero();
+    phi_22.setZero();
+    double alpha = 1;
+
+    ElemMatProvider elemMatProv_11(cell_permeability, sub_domains, 1); //domain-tag: 1->rotor, 2->stator, 3->airgap
+    ElemVecProvider elemVecProv_11(cell_current, sub_domains, 1);
+    MassMatProvider massMatProv_11(cell_conductivity, sub_domains, 1);
+
+    ElemMatProvider elemMatProv_22(cell_permeability, 2);
+    ElemVecProvider elemVecProv_22(cell_current, sub_domains, 2);
+    MassMatProvider massMatProv_22(cell_conductivity, sub_domains, 2);
+
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv_11, A_11);
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv_11, M_11);
+    lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv_11, phi_11);
+
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv_22, A_22);
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv_22, M_22);
+    lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv_22, phi_22);
+
+    FixFlaggedSolutionComponents()
+
     for (unsigned i = 1; i < timesteps; ++i){
 
         double rel_angle = angle_step * i;
@@ -95,14 +114,22 @@ int main (int argc, char *argv[]){
         std::cout << "Mesh Path :" << final_mesh << std::endl;
         mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
         std::cout<< "Final mesh: " << final_mesh << std::endl;
- 
-
         std::cout << "timestep: " << i << std::endl;
         std::string vtk_filename = std::string("vtk_files/time_dependent/rotating/eddy_solution_transient_") + argv[1] + "_" + std::to_string(i) + std::string(".vtk");
         double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}}; 
-        auto [mesh_p, cell_current, cell_permeability, cell_conductivity] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
+        [mesh_p, cell_current, cell_permeability, cell_conductivity, cell_subdomain] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
+
+        ElemMatProvider elemMatProv_33(cell_permeability, sub_domains, 3);
+        ElemVecProvider elemVecProv_33(cell_current, sub_domains, 3);
+        MassMatProvider massMatProv_33(cell_conductivity, sub_domains, 3);
+
+        lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv_33, A_33);
+        lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv_33, M_33);
+        lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv_33, phi_33);
+
+
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
@@ -111,10 +138,6 @@ int main (int argc, char *argv[]){
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
         Eigen::VectorXd discrete_solution = current_timestep; 
-
-
-
-    
 
 
         auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);

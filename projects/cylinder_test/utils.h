@@ -52,6 +52,9 @@ class MeshFunctionH{
 };
 
 
+  std::vector<std::pair <long, double>> ess_dof_select()
 } //namespace utils
+
+
 
 #endif // UTILS_H

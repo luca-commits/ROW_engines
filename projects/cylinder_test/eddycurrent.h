@@ -34,34 +34,46 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
 class ElemMatProvider {
  public:
   // Constructor can be used to pass data required for local computations
-  ElemMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_permeability) :
-                  cell_permeability_(cell_permeability){}
+  ElemMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_permeability, 
+                  lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains, 
+                  const unsigned subdomain) :
+                  cell_permeability_(cell_permeability), sub_domains_(subdomains), subdomain_(subdomain) {}
   // Select cells taken into account during cell-oriented assembly
-  virtual bool isActive(const lf ::mesh:: Entity & /*cell*/) { return true; }
+  bool isActive(const lf ::mesh:: Entity & cell) { return sub_domains_cell_(cell) == subdomain_ };
   // Compute element matrix for a cell, here a fixed-size matrix
   const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity& cell);
   private:
     lf::mesh::utils::CodimMeshDataSet<double> cell_permeability_;
+    lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains_;
+    const unsigned subdomain_;
 };
 
 class ElemVecProvider{
   public:
-  ElemVecProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_current) :
-                  cell_current_(cell_current){}
-    bool isActive(const lf::mesh::Entity& cell){return cell_current_(cell) != 0;}; //maybe change it to only do computations if J != 0 
-    const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
+  ElemVecProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_current, 
+                  lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains, 
+                  const unsigned subdomain) :
+                  cell_current_(cell_current), sub_domains_(subdomains), subdomain_(subdomain){}
+  bool isActive(const lf ::mesh:: Entity & cell) { return sub_domains_cell_(cell) == subdomain_ };    
+  const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
   private:
     lf::mesh::utils::CodimMeshDataSet<double> cell_current_;
+    lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains_;
+    const unsigned subdomain_;
 };
 
 class MassMatProvider{
   public:
-  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity) :
-                  cell_conductivity_(cell_conductivity){}
-    bool isActive(const lf::mesh::Entity& cell){return true;}; 
+  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity, 
+                  lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains, 
+                  const unsigned subdomain) :
+                  cell_conductivity_(cell_conductivity), sub_domains_(subdomains), subdomain_(subdomain){}
+    bool isActive(const lf ::mesh:: Entity & cell) { return sub_domains_cell_(cell) == subdomain_ };    
     const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity &cell);
   private:
     lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_;
+    lf::mesh::utils::CodimMeshDataSet<unsigned> sub_domains_;
+    const unsigned subdomain_;
 };
 
 
