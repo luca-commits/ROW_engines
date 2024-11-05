@@ -75,8 +75,6 @@ Plane Surface(3) = {3, 4}; //ring
 Plane Surface(4) = {4, 1}; //airbox
 
 
-
-
 Physical Surface(1) = {2, 4}; // tag 1: air
 Physical Surface(2) = {1};    // inner cylinder
 Physical Surface(3) = {3};    // ring
