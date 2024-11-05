@@ -92,6 +92,8 @@ int main (int argc, char *argv[]){
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
 
+        std::cout << "N_dofs " << dofh_temp.NumDofs() << std::endl;
+
 
         auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
