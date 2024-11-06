@@ -33,8 +33,8 @@ void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, 
 }
 
 
-void mergeEverything(const std::string& input_file_stator,
-                     const std::string& input_file_rotor,
+void mergeEverything(const std::string& input_file_rotor,
+                     const std::string& input_file_stator,
                      const std::string& input_file_airgap,
                      const std::string& output_file) {
     gmsh::initialize();
@@ -52,13 +52,17 @@ void mergeEverything(const std::string& input_file_stator,
         gmsh::option::setNumber("Mesh.ScalingFactor", 1.0);
 
         // Open and merge files one by one with cleanup after each
-        gmsh::open(input_file_rotor);
-        gmsh::model::geo::synchronize();
-        gmsh::model::mesh::removeDuplicateNodes();
+        if (input_file_rotor!= ""){
+            gmsh::merge(input_file_rotor);
+            gmsh::model::geo::synchronize();
+            gmsh::model::mesh::removeDuplicateNodes();
+        }
 
-        gmsh::merge(input_file_stator);
-        gmsh::model::geo::synchronize();
-        gmsh::model::mesh::removeDuplicateNodes();
+        if (input_file_stator != ""){
+            gmsh::merge(input_file_stator);
+            gmsh::model::geo::synchronize();
+            gmsh::model::mesh::removeDuplicateNodes();
+        }
 
         gmsh::merge(input_file_airgap);
         gmsh::model::geo::synchronize();

@@ -123,7 +123,8 @@ std::tuple<const Eigen::SparseMatrix<double>,
     std::shared_ptr<const lf::mesh::Mesh> mesh_p,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
     lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
-    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity 
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity,
+    bool drop_boundary 
     )
 {
 
@@ -148,32 +149,34 @@ std::tuple<const Eigen::SparseMatrix<double>,
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv, M);
   lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv, phi);
+  
+  if(drop_boundary){
+    auto bd_flags {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
 
-  auto bd_flags {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
-
-  std::vector<std::pair <long, double>> ess_dof_select {};
-  for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
-    const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
-    const Eigen::Vector2d node_pos {
-    lf::geometry::Corners(*dof_node.Geometry()).col(0)}; 
-    Eigen::Vector2d upper_node;
-    upper_node << -5, 0;
-    if (bd_flags(dof_node)) {
-      // Dof associated with a entity on the boundary: "essential dof" 
-      ess_dof_select.emplace_back ( true , 0 ) ; 
-    } else {  
-      // Interior node, also store value of solution for comparison purposes
-      ess_dof_select.emplace_back ( false , 0 ) ; 
-    }
-  }                                 
-  Eigen::VectorXd phi_copy = phi;    
-  // Eigen::VectorXd useless = Eigen::VectorXd::Zero(N_dofs);
-  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, A, useless);
-  // lf::assemble::FixSolutionComponentsLse(ess_dof_select, M, useless);
-  lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
-    return ess_dof_select[dof_idx];}, A, phi);
+    std::vector<std::pair <long, double>> ess_dof_select {};
+    for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+      const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
+      const Eigen::Vector2d node_pos {
+      lf::geometry::Corners(*dof_node.Geometry()).col(0)}; 
+      Eigen::Vector2d upper_node;
+      upper_node << -5, 0;
+      if (bd_flags(dof_node)) {
+        // Dof associated with a entity on the boundary: "essential dof" 
+        ess_dof_select.emplace_back ( true , 0 ) ; 
+      } else {  
+        // Interior node, also store value of solution for comparison purposes
+        ess_dof_select.emplace_back ( false , 0 ) ; 
+      }
+    }                                 
+    Eigen::VectorXd phi_copy = phi;    
+    // Eigen::VectorXd useless = Eigen::VectorXd::Zero(N_dofs);
+    // lf::assemble::FixSolutionComponentsLse(ess_dof_select, A, useless);
+    // lf::assemble::FixSolutionComponentsLse(ess_dof_select, M, useless);
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+      return ess_dof_select[dof_idx];}, A, phi);
     lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &M, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
-    return ess_dof_select[dof_idx];}, M, phi_copy);
+      return ess_dof_select[dof_idx];}, M, phi_copy);
+  }
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
   return {A_crs, M_crs, phi};
