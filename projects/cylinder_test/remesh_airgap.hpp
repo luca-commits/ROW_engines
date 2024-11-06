@@ -45,7 +45,6 @@ void mergeEverything(const std::string& input_file_stator,
         gmsh::option::setNumber("Geometry.MatchMeshTolerance", 1e-8);
         
         // Set mesh options
-        gmsh::option::setNumber("Mesh.Binary", 1);
         gmsh::option::setNumber("Mesh.MshFileVersion", 4.1);
         gmsh::option::setNumber("Mesh.SaveAll", 0);
         gmsh::option::setNumber("Mesh.SaveParametric", 0);
@@ -64,12 +63,9 @@ void mergeEverything(const std::string& input_file_stator,
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
 
-
-        // Save and display
-        gmsh::option::setNumber("Mesh.Binary", 1);
         
         // Optional: Display the merged mesh
-        gmsh::fltk::run();
+        // gmsh::fltk::run();
         
         gmsh::write(output_file);
         

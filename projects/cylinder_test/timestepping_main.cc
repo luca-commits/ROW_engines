@@ -1,5 +1,4 @@
 #include "implicit_euler.h"
-#include "eddycurrent_time_dependent.h"
 #include "eddycurrent.h"
 #include "utils.h"
 

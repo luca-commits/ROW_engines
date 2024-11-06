@@ -8,8 +8,6 @@ set(SOURCES
   # read_cylinder_mesh.cc
   eddycurrent.h
   eddycurrent.cc 
-  eddycurrent_time_dependent.h
-  eddycurrent_time_dependent.cc
   implicit_euler.h
   utils.h
   BICG_stab.hpp
