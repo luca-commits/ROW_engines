@@ -80,7 +80,7 @@ int main (int argc, char *argv[]){
         double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}}; //1 -> air, 2-> cylinder, 3 -> ring
-        auto [mesh_p, cell_current, cell_permeability, cell_conductivity] = eddycurrent::readMeshWithTags(mesh_path, tag_to_current, tag_to_permeability, tag_to_conductivity);
+        auto [mesh_p, cell_current, cell_permeability, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(mesh_path, tag_to_current, tag_to_permeability, tag_to_conductivity);
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
         Eigen::VectorXd next_timestep = implicit_euler_step(A, M, step_size, current_timestep, phi);
 
