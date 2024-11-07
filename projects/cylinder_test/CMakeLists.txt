@@ -11,6 +11,8 @@ set(SOURCES
   implicit_euler.h
   utils.h
   BICG_stab.hpp
+  remesh_airgap.hpp
+  rotate_mesh.hpp
 )
 
 # Define executable for solving eddy current problem (steady-state)
@@ -21,15 +23,34 @@ add_executable(projects.cylinder_test.solve_eddy_td timestepping_main.cc ${SOURC
 add_executable(projects.cylinder_test.read_mesh read_cylinder_mesh.cc)
 add_executable(projects.cylinder_test.solve_with_rotation solve_with_rotation.cc ${SOURCES})
 add_executable(projects.cylinder_test.test_meshes test_meshes.cpp  )
+add_executable(projects.cylinder_test.test_dof_mapping test_dof_mapping.cpp ${SOURCES})
 
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC /usr/local/include/eigen3)
-target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
-
-
-target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
-
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC src/main)
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC /usr/local/include)
+
+target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
+target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
+
+target_include_directories(projects.cylinder_test.test_dof_mapping PUBLIC /usr/local/include)
+
+
+target_link_libraries(projects.cylinder_test.test_dof_mapping
+  PUBLIC Boost::program_options Eigen3::Eigen
+  lf.assemble
+  lf.base
+  lf.geometry
+  lf.io
+  lf.mesh
+  lf.mesh.hybrid2d
+  lf.mesh.test_utils
+  lf.mesh.utils
+  lf.refinement
+  lf.uscalfe
+  BLAS::BLAS
+  /usr/local/lib/libgmsh.dylib
+)
+
 
 # Link executables with required modules and BLAS
 target_link_libraries(projects.cylinder_test.read_mesh
@@ -99,6 +120,7 @@ set_target_properties(projects.cylinder_test.solve_eddy            PROPERTIES FO
 set_target_properties(projects.cylinder_test.solve_eddy_td         PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.solve_with_rotation   PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.test_meshes   PROPERTIES FOLDER "projects/cylinder_test")
+set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
 
 target_include_directories(projects.cylinder_test.solve_with_rotation PUBLIC /usr/local/include)
 
@@ -107,11 +129,12 @@ add_custom_target(projects.cylinder_test.solve_eddy_run     COMMAND static)
 add_custom_target(projects.cylinder_test.solve_eddy_td_run  COMMAND static)
 add_custom_target(projects.cylinder_test.solve_with_rotation_run  COMMAND static)
 add_custom_target(projects.cylinder_test.test_meshes_run  COMMAND static)
+add_custom_target(projects.cylinder_test.test_dof_mapping_run  COMMAND static)
 
 # Set folder properties for the custom targets
 set_target_properties(projects.cylinder_test.solve_eddy_run        PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.solve_eddy_td_run     PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.solve_with_rotation_run     PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.test_meshes     PROPERTIES FOLDER "projects/cylinder_test")
-
+set_target_properties(projects.cylinder_test.test_dof_mapping_run     PROPERTIES FOLDER "projects/cylinder_test")
 
