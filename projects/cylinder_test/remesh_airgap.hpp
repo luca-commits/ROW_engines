@@ -46,12 +46,10 @@ void mergeEverything(const std::string& input_file_stator,
         
         // Set mesh options
         gmsh::option::setNumber("Mesh.MshFileVersion", 4.1);
-        gmsh::option::setNumber("Mesh.SaveAll", 0);
-        gmsh::option::setNumber("Mesh.SaveParametric", 0);
         gmsh::option::setNumber("Mesh.ScalingFactor", 1.0);
 
         // Open and merge files one by one with cleanup after each
-        gmsh::open(input_file_rotor);
+        gmsh::merge(input_file_rotor);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
 
@@ -59,10 +57,10 @@ void mergeEverything(const std::string& input_file_stator,
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
 
+
         gmsh::merge(input_file_airgap);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
-
         
         // Optional: Display the merged mesh
         // gmsh::fltk::run();
