@@ -10,7 +10,7 @@ int main(int argc, char *argv[]) {
     std::map<int, double> tag_to_current{{1, 0}, {2, 1}, {3, 0}}; // 1 -> air, 2 -> cylinder
     std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 20 * MU_0}};
     std::map<int, double> tag_to_conductivity{{1, 1}, {2, 1}, {3, 1}};
-    auto [mesh_p, cell_current, cell_permeability, cell_conductivity] = eddycurrent::readMeshWithTags(mesh_path, tag_to_current, tag_to_permeability, tag_to_conductivity);
+    auto [mesh_p, cell_current, cell_permeability, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(mesh_path, tag_to_current, tag_to_permeability, tag_to_conductivity);
     std::cout << "Hii: " << std::endl;
     Eigen::VectorXd discrete_solution = eddycurrent::solve(mesh_p, cell_current, cell_permeability, cell_conductivity);
     auto fe_space_p =
