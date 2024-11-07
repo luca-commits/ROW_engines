@@ -26,7 +26,8 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
           lf::mesh::utils::CodimMeshDataSet<double>,
-          lf::mesh::utils::CodimMeshDataSet<double>>
+          lf::mesh::utils::CodimMeshDataSet<double>,
+          lf::mesh::utils::CodimMeshDataSet<unsigned>>
   readMeshWithTags(std::string filename, std::map<int, double> tag_to_current, std::map<int, double> tag_to_permeability, std::map<int, double> tag_to_conductivity){
   // Total number of contacts
   const int NPhysGrp = 2;
@@ -41,14 +42,16 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
   lf::mesh::utils::CodimMeshDataSet<double> cell_current{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_permeability{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity{mesh_p, 0, -1};
+  lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tag{mesh_p, 0, 0};
   for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
     LF_ASSERT_MSG(cell->RefEl() == lf::base::RefEl::kTria(),
                   " edge must be a triangle!");
     cell_current(*cell) = tag_to_current[reader.PhysicalEntityNr(*cell)[0]];
     cell_permeability(*cell) = tag_to_permeability[reader.PhysicalEntityNr(*cell)[0]];
     cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
+    cell_tag(*cell) = reader.PhysicalEntityNr(*cell)[0];
   }
-  return {mesh_p, cell_current, cell_permeability, cell_conductivity};
+  return {mesh_p, cell_current, cell_permeability, cell_conductivity, cell_tag};
 }
 
 const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity &cell){
