@@ -23,7 +23,7 @@ int main (int argc, char *argv[]){
         if (!(infile >> total_time)){
             std::cerr << "Error reading total_time" << std::endl;
         }
-        if (!(infile >> timesteps)){
+        if (!(infile >> timesteps)){  
             std::cerr << "Error reading timesteps" << std::endl;
         }
         if (!(infile >> mesh_name)){
@@ -62,27 +62,31 @@ int main (int argc, char *argv[]){
     rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", M_PI * rel_angle);
     std::string final_mesh = mesh_path + "motor_" + std::to_string(0) + ".msh";
     std::cout << "Mesh Path :" << final_mesh << std::endl;
-    mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh);    
+    mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh); 
 
-    auto mesh_factory = std::make_unique<lf::mesh::hybrid2d::MeshFactory>(2);
-    std::cout << "Reading mesh from " << final_mesh << std::endl;
-    lf::io::GmshReader reader_temp(std::move(mesh_factory), final_mesh);
-    std::shared_ptr<const lf::mesh::Mesh> mesh_p_temp{reader_temp.mesh()};
+    std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring
+    std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}};
+    std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}};
 
+    auto [mesh_p_temp, cell_current, cell_permeability, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
+
+
     // Obtain local->global index mapping for current finite element space
     const lf::assemble::DofHandler &dofh_temp{fe_space_temp->LocGlobMap()};
     // Dimension of finite element space = number of nodes of the mesh
     const lf::base::size_type N_dofs(dofh_temp.NumDofs());
 
+    std::size_t number_stable_dofs = utils::computeDofsWithoutRing(mesh_p_temp, cell_tag, fe_space_temp);
 
-    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); 
+    std::cout << "number_stable_dofs " << number_stable_dofs << std::endl;
+
+    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
-    std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring
-    std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}};
-    std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}};
+
     double angle_step = M_PI / 360 ; 
+
 
   
     for (unsigned i = 1; i < timesteps; ++i){
@@ -95,26 +99,26 @@ int main (int argc, char *argv[]){
         mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
         std::cout<< "Final mesh: " << final_mesh << std::endl;
  
-
         std::cout << "timestep: " << i << std::endl;
         std::string vtk_filename = std::string("vtk_files/time_dependent/rotating/eddy_solution_transient_") + argv[1] + "_" + std::to_string(i) + std::string(".vtk");
         double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}}; 
-        auto [mesh_p, cell_current, cell_permeability, cell_conductivity] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
+        auto [mesh_p, cell_current, cell_permeability, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
         std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
-        Eigen::VectorXd next_timestep = implicit_euler_step(A, M, step_size, current_timestep, phi);
+
+        Eigen::VectorXd current_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
+        std::cout << "A ---------" << std::endl;
+        current_timestep_extended.head(number_stable_dofs) = current_timestep; 
+        std::cout << "B ---------" << std::endl;
+
+        Eigen::VectorXd next_timestep = implicit_euler_step(A, M, step_size, current_timestep_extended, phi);
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
-        Eigen::VectorXd discrete_solution = current_timestep; 
-
-
-
-    
-
+        Eigen::VectorXd discrete_solution = current_timestep_extended; 
 
         auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
@@ -132,13 +136,14 @@ int main (int argc, char *argv[]){
             }
         }
         
-        Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep);
+        Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep_extended);
         auto current = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < backwards_difference.rows(); global_idx++) {
             if (node_conductivity->DefinedOn(dofh.Entity(global_idx))){
                 current->operator()(dofh.Entity(global_idx)) = backwards_difference[global_idx] * (*node_conductivity)(dofh.Entity(global_idx));
             }
         }
+
 
         lf::mesh::utils::CodimMeshDataSet<double> relative_permeability{mesh_p, 0, -1};
         for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
