@@ -69,7 +69,8 @@ class MassMatProvider{
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
           lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
-          lf::mesh::utils::CodimMeshDataSet<double>>
+          lf::mesh::utils::CodimMeshDataSet<double>,
+          lf::mesh::utils::CodimMeshDataSet<unsigned>>
 readMeshWithTags(std::string filename, std::map<int, double>, std::map<int, double>, std::map<int, double>);
 
 
