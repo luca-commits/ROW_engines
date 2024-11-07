@@ -51,6 +51,50 @@ class MeshFunctionH{
         lf::mesh::utils::CodimMeshDataSet<double> permeability_;
 };
 
+size_t computeDofsWithoutRing(const std::shared_ptr<const lf::mesh::Mesh>& mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tag,
+    std::shared_ptr<lf::uscalfe::FeSpaceLagrangeO1<double>> fe_space) {
+    
+    // Get the DOF handler
+    const lf::assemble::DofHandler& dofh{fe_space->LocGlobMap()};
+    
+    // Map to store nodes and all their adjacent cell tags
+    std::map<const lf::mesh::Entity*, std::set<unsigned>> node_adjacent_tags;
+    
+    // First pass: collect all adjacent cell tags for each node
+    for (const lf::mesh::Entity* cell : mesh_p->Entities(0)) {
+        unsigned tag = cell_tag(*cell);
+        auto nodes = cell->SubEntities(2);
+        for (const lf::mesh::Entity* node : nodes) {
+            node_adjacent_tags[node].insert(tag);
+        }
+    }
+    
+    // Set to store the DOFs we want to count
+    std::set<lf::base::size_type> stable_dofs;
+    
+    // Second pass: collect DOFs excluding pure ring nodes
+    for (const lf::mesh::Entity* cell : mesh_p->Entities(0)) {
+        unsigned tag = cell_tag(*cell);
+        
+        // Process nodes for non-ring elements
+        if (tag != 4) {
+            auto nodes = cell->SubEntities(2);
+            for (const lf::mesh::Entity* node : nodes) {
+                // Include the node if either:
+                // 1. It's a pure non-ring node, or
+                // 2. It's on a boundary (has multiple tags)
+                if (node_adjacent_tags[node].count(4) == 0 || 
+                    node_adjacent_tags[node].size() > 1) {
+                    stable_dofs.insert(dofh.GlobalDofIndices(*node).begin(),
+                                     dofh.GlobalDofIndices(*node).end());
+                }
+            }
+        }
+    }
+    
+    return stable_dofs.size();
+}
 
 } //namespace utils
 
