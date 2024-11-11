@@ -121,13 +121,13 @@ Eigen::VectorXd solve(
 
 std::tuple<const Eigen::SparseMatrix<double>, 
            const Eigen::SparseMatrix<double>, 
-           Eigen::VectorXd> A_M_phi_assembler
-    (
-    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-    lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
-    lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
-    lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity 
-    )
+  Eigen::VectorXd> A_M_phi_assembler
+  (
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
+  lf::mesh::utils::CodimMeshDataSet<double> & cell_permeability, 
+  lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity 
+  )
 {
 
   auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
