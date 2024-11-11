@@ -71,24 +71,21 @@ int main (int argc, char *argv[]){
     auto [mesh_p_temp, cell_current, cell_permeability, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_permeability, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
 
-
     // Obtain local->global index mapping for current finite element space
     const lf::assemble::DofHandler &dofh_temp{fe_space_temp->LocGlobMap()};
     // Dimension of finite element space = number of nodes of the mesh
     const lf::base::size_type N_dofs(dofh_temp.NumDofs());
 
-    std::size_t number_stable_dofs = utils::computeDofsWithoutRing(mesh_p_temp, cell_tag, fe_space_temp);
+    std::size_t number_stable_dofs = utils::computeDofsWithoutAirgap(mesh_p_temp, cell_tag, fe_space_temp);
 
     std::cout << "number_stable_dofs " << number_stable_dofs << std::endl;
 
     Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
-
     double angle_step = M_PI / 360 ; 
 
 
-  
     for (unsigned i = 1; i < timesteps; ++i){
 
         double rel_angle = angle_step * i;
@@ -108,10 +105,11 @@ int main (int argc, char *argv[]){
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_permeability, cell_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+
         std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
 
         Eigen::VectorXd current_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
-        current_timestep_extended[6000] = 1;
+        current_timestep_extended[2814] = 1;
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
         Eigen::VectorXd discrete_solution = current_timestep_extended; 
@@ -121,7 +119,7 @@ int main (int argc, char *argv[]){
             nodal_data->operator()(dofh.Entity(global_idx)) = current_timestep_extended[global_idx];
         }
         vtk_writer.WritePointData("test", *nodal_data);
-
+        vtk_writer.WriteCellData("domain", cell_tag);
         
     }
     return 0; 
