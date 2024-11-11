@@ -9,16 +9,17 @@
 #include "BICG_stab.hpp"
 
 Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const Eigen::SparseMatrix<double>& M, double timestep, const Eigen::VectorXd & current_step, const Eigen::VectorXd & load_vector){
-    // Eigen::SparseMatrix<double> Id(load_vector.size(), load_vector.size());
-    // Id.setZero(); 
     Eigen::SparseMatrix<double> lhs = timestep * A + M;
+    std::cout << "lhs.norm() " << lhs.norm() << std::endl;
     Eigen::VectorXd rhs = M * current_step + timestep * load_vector; 
+    std::cout << "rhs.norm() " << rhs.norm() << std::endl;
     lf::assemble::dim_t N_dofs = load_vector.size();
     Eigen::VectorXd next_timestep(N_dofs);
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
 
     solver.compute(lhs);
     next_timestep = solver.solve(rhs);
+    std::cout << "next_timestep.norm() " << next_timestep.norm() << std::endl;
 
 
     double rel_res = 0.0;
@@ -33,4 +34,5 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const 
 
     return next_timestep;
 }
+
 #endif //IMPLICIT_EULER_H
