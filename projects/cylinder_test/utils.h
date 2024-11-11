@@ -51,7 +51,7 @@ class MeshFunctionH{
         lf::mesh::utils::CodimMeshDataSet<double> permeability_;
 };
 
-size_t computeDofsWithoutRing(const std::shared_ptr<const lf::mesh::Mesh>& mesh_p,
+size_t computeDofsWithoutAirgap(const std::shared_ptr<const lf::mesh::Mesh>& mesh_p,
     lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tag,
     std::shared_ptr<lf::uscalfe::FeSpaceLagrangeO1<double>> fe_space) {
     
