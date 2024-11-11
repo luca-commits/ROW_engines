@@ -26,11 +26,11 @@ int test_coincidence(std::string mesh_file){
             double y_second = coords[j * 3 + 1];
             
             Eigen::Vector2d first;
-            first << x_first, y_first;
+            first  << x_first, y_first;
             Eigen::Vector2d second; 
             second << x_second, y_second;
 
-            if ((first -second).norm() < 1e-7){
+            if ((first - second).norm() < 1e-7){
                 if (i != j){
                     std::cout << "Node difference " << (first - second).norm() << std::endl;
                     std::cout << "first coordinates " << std::endl << first << std::endl;
