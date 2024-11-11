@@ -33,36 +33,45 @@ void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, 
 }
 
 
-void mergeEverything(const std::string& input_file_stator,
+unsigned mergeEverything(const std::string& input_file_stator,
                      const std::string& input_file_rotor,
                      const std::string& input_file_airgap,
                      const std::string& output_file) {
     gmsh::initialize();
     gmsh::option::setNumber("General.Terminal", 0);
+    unsigned numStableDof;
+
     try {
-        // Set consistent tolerances
+
         gmsh::option::setNumber("Geometry.Tolerance", 1e-8);
         gmsh::option::setNumber("Geometry.MatchMeshTolerance", 1e-8);
         
-        // Set mesh options
         gmsh::option::setNumber("Mesh.MshFileVersion", 4.1);
         gmsh::option::setNumber("Mesh.ScalingFactor", 1.0);
 
-        // Open and merge files one by one with cleanup after each
         gmsh::merge(input_file_rotor);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
+        gmsh::model::mesh::removeDuplicateElements();
 
         gmsh::merge(input_file_stator);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
+        gmsh::model::mesh::removeDuplicateElements();
 
+        std::vector<std::size_t> nodeTags;
+        std::vector<double> nodeCoords, nodeParams;
+        gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+
+        // Number of nodes is the size of nodeTags
+        numStableDof = nodeTags.size();
 
         gmsh::merge(input_file_airgap);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
+        gmsh::model::mesh::removeDuplicateElements();
+
         
-        // Optional: Display the merged mesh
         // gmsh::fltk::run();
         
         gmsh::write(output_file);
@@ -72,6 +81,8 @@ void mergeEverything(const std::string& input_file_stator,
         gmsh::finalize();
         throw;
     }
+
+    return numStableDof;
 }
 
 #endif //REMESH_AIRGAP_HPP
