@@ -10,7 +10,6 @@
 #include <iostream> 
 
 void rotateAllNodes_alt(const std::string& input_file, const std::string& output_file, double angle) {
-     // Initialize GMSH
     gmsh::initialize();
     
     // Calculate rotation matrix coefficients once
@@ -38,8 +37,8 @@ void rotateAllNodes_alt(const std::string& input_file, const std::string& output
         
         // Update node coordinates using setNode
         gmsh::model::mesh::setNode(
-            nodeTags[i],                    // node tag
-            {new_x, new_y, z} ,             // new coordinates
+            nodeTags[i],
+            {new_x, new_y, z} ,             
             parametricCoords             
         );
     }
