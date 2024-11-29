@@ -7,6 +7,8 @@
 #include <lf/mesh/hybrid2d/hybrid2d.h>
 #include <lf/mesh/utils/utils.h>
 #include <lf/uscalfe/uscalfe.h>
+#include "utils.h"
+#include "magnetic_material.hpp"
 
 #include <array>
 #include <iomanip>
@@ -34,14 +36,18 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
 class ElemMatProvider {
  public:
   // Constructor can be used to pass data required for local computations
-  ElemMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_permeability) :
-                  cell_permeability_(cell_permeability){}
+  ElemMatProvider(lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags,
+                  utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux) :
+                   material_tags_(material_tags)
+                  , cell_magnetic_flux_(cell_magnetic_flux){}
   // Select cells taken into account during cell-oriented assembly
   virtual bool isActive(const lf ::mesh:: Entity & /*cell*/) { return true; }
   // Compute element matrix for a cell, here a fixed-size matrix
   const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity& cell);
   private:
-    lf::mesh::utils::CodimMeshDataSet<double> cell_permeability_;
+    lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
+    utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
+    std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
 };
 
 class ElemVecProvider{
@@ -54,6 +60,7 @@ class ElemVecProvider{
     lf::mesh::utils::CodimMeshDataSet<double> cell_current_;
 };
 
+
 class MassMatProvider{
   public:
   MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity) :
@@ -63,6 +70,46 @@ class MassMatProvider{
   private:
     lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_;
 };
+
+
+class ElemMat_N_Provider {
+public:
+    ElemMat_N_Provider(
+        lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags,
+        utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux,  
+        lf::fe::MeshFunctionGradFE<double, double> cell_grad_xn)
+        : material_tags_(material_tags)
+        , cell_grad_xn_(cell_grad_xn)
+        , cell_magnetic_flux_(cell_magnetic_flux) {}
+        
+    virtual bool isActive(const lf::mesh::Entity& /*cell*/) { return true; }
+  // Compute element matrix for a cell, here a fixed-size matrix
+  const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity& cell);
+private:
+    lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
+    utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
+    lf::fe::MeshFunctionGradFE<double, double> cell_grad_xn_;
+    std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
+};
+
+
+
+
+class ElemVec_rho_Provider{
+  public:
+    ElemVec_rho_Provider(utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux,
+                  lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags) :
+                  cell_magnetic_flux_(cell_magnetic_flux),
+                  material_tags_(material_tags) {}
+    bool isActive(const lf::mesh::Entity& cell){return true;}; //maybe change it to only do computations if J != 0 
+    const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
+  private:
+    utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
+    std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
+    lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
+};
+
+
 
 
 
@@ -84,10 +131,22 @@ std::tuple<const Eigen::SparseMatrix<double>,
            const Eigen::SparseMatrix<double>, 
            Eigen::VectorXd
           > A_M_phi_assembler(
-    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-    lf::mesh::utils::CodimMeshDataSet<double> &,
-    lf::mesh::utils::CodimMeshDataSet<double> &,
-    lf::mesh::utils::CodimMeshDataSet<double> &
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<double> & cell_current,
+  lf::mesh::utils::CodimMeshDataSet<double> & cell_conductivity,
+  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags,
+  utils::MeshFunctionCurl2DFE<double, double>  & cell_B
+  );
+
+
+
+   std::tuple<const Eigen::SparseMatrix<double>, 
+                  Eigen::VectorXd> N_rho_assembler
+  (
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+  utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
+  lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
   );
 
 } //namespace eddycurrent
