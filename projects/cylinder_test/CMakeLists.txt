@@ -3,6 +3,8 @@ set(CMAKE_CXX_STANDARD 17)
 # Find BLAS
 find_package(BLAS REQUIRED)
 
+add_subdirectory(extern/alglib)
+
 # Set sources
 set(SOURCES
   # read_cylinder_mesh.cc
@@ -26,6 +28,7 @@ add_executable(projects.cylinder_test.solve_non-linear solve_non-linear.cc ${SOU
 
 add_executable(projects.cylinder_test.test_meshes test_meshes.cpp  )
 # add_executable(projects.cylinder_test.test_dof_mapping test_dof_mapping.cpp ${SOURCES})
+add_executable(projects.cylinder_test.test_permeability test_permeability.cpp )
 
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC /usr/local/include/eigen3)
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC src/main)
@@ -36,6 +39,7 @@ target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.
 
 # target_include_directories(projects.cylinder_test.test_dof_mapping PUBLIC /usr/local/include)
 
+target_link_libraries(projects.cylinder_test.test_permeability PRIVATE alglib)
 
 # target_link_libraries(projects.cylinder_test.test_dof_mapping
 #   PUBLIC Boost::program_options Eigen3::Eigen
@@ -140,6 +144,8 @@ target_link_libraries(projects.cylinder_test.solve_non-linear
 set_target_properties(projects.cylinder_test.solve_non-linear   PROPERTIES FOLDER "projects/cylinder_test")
 
 set_target_properties(projects.cylinder_test.test_meshes   PROPERTIES FOLDER "projects/cylinder_test")
+set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
+set_target_properties(projects.cylinder_test.test_permeability   PROPERTIES FOLDER "projects/cylinder_test")
 # set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
 
 # target_include_directories(projects.cylinder_test.solve_with_rotation PUBLIC /usr/local/include)
