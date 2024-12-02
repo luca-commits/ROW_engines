@@ -120,6 +120,7 @@ int main (int argc, char *argv[]){
 
         Eigen::VectorXd next_newton_step;
         Eigen::VectorXd current_newton_step = current_time_step; 
+        Eigen::VectorXd current_newton_step_copy; 
         
         double newton_tolerance = 1e-7; 
         double newton_residual = 1000; 
@@ -143,22 +144,24 @@ int main (int argc, char *argv[]){
             newton_residual = (lhs * next_newton_step - rhs).norm()/ rhs.norm(); 
 
             std::cout << "newton residual " << newton_residual << std::endl; 
+            current_newton_step_copy = current_newton_step; 
             current_newton_step = next_newton_step; 
         }
 
 
         Eigen::VectorXd next_timestep = next_newton_step;
 
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, next_newton_step);
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_newton_step_copy);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
 
-        
+
         auto [A_temp, M_temp, phi_temp] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
         auto lhs = (step_size * A_temp + M_temp);
         auto rhs =  M_temp * current_time_step + step_size * phi_temp;
         Eigen::VectorXd residual = lhs * next_newton_step - rhs;
         double rel_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
-
+        std::cout << "Right hand side : " << rhs.norm() << std::endl; 
+        std::cout << "Left hand side : " << (lhs * next_newton_step).norm() << std::endl; 
 
         std::cout << "Final newton residual " << rel_residual << std::endl; 
 
