@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <lf/assemble/assemble.h>
 
+#include "interpolation.h"
+
 // Abstract base class for magnetic material behavior using reluctivity
 class MagneticMaterial {
 public:
@@ -46,37 +48,97 @@ private:
 
 class FerromagneticMaterial : public MagneticMaterial {
 public:
-    FerromagneticMaterial(double mu_initial) : mu_initial_(mu_initial * mu0_) {}
+    FerromagneticMaterial(){
+         try
+            {
+                //
+                // We use cubic spline to interpolate f(x)=x^2 sampled 
+                // at 5 equidistant nodes on [-1,+1].
+                //
+                // First, we use default boundary conditions ("parabolically terminated
+                // spline") because cubic spline built with such boundary conditions 
+                // will exactly reproduce any quadratic f(x).
+                //
+                // Then we try to use natural boundary conditions
+                //     d2S(-1)/dx^2 = 0.0
+                //     d2S(+1)/dx^2 = 0.0
+                // and see that such spline interpolated f(x) with small error.
+                //
+
+                std::ifstream infile("tabular_permeability.txt");
+                std::string x_str, y_str;
+
+                if (infile.is_open()) {
+                    std::getline(infile, x_str);
+                    std::getline(infile, y_str);
+                    infile.close();
+                } else {
+                    std::cerr << "Error: Unable to open tabular_permeability.txt" << std::endl;
+                    // You might want to check if the file exists in the correct directory
+                    std::cerr << "Current working directory might not be what you expect" << std::endl;
+                }
+
+
+                alglib::real_1d_array x(x_str.c_str());
+                alglib::real_1d_array y(y_str.c_str());
+
+                // Build cubic spline with specified boundary condition
+                alglib::spline1dbuildlinear(x, y, s_);
+
+                
+            }
+            catch(alglib::ap_error alglib_exception)
+            {
+                printf("ALGLIB exception with message '%s'\n", alglib_exception.msg.c_str());
+                throw std::runtime_error("error in construction of spline");
+            }
+    }
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
-        double B_magnitude = B.norm();
-        if (B_magnitude < 1e-10) {
-            return B / mu_initial_;
-        }
-        return 0 * B; //getReluctivity(B_magnitude) * B;
+        return getReluctivity(B.norm()) * B; 
     }
 
 
     double getReluctivity(double B) const override {
-        if (B < 1e-10) {
-            return 1/mu_initial_;
+        if (B < 1e-12) {
+            double reluctivity = alglib::spline1dcalc(s_, 1e-10) / 1e-10; 
+            // std::cout << "reluctivity: " << reluctivity << std::endl; 
+            return reluctivity;  // Return vacuum reluctivity for very small B
         }
-        return std::atan(beta_ * B) / B ;
+
+        double dx = 0;
+        double function = 0;
+        double dx2 = 0;
+        alglib::spline1ddiff(s_, B, function, dx, dx2);
+        // std::cout << "B : " << B << std::endl; 
+        // std::cout << "reluctivity : " << alglib::spline1dcalc(s_, B) / B << std::endl;
+        return function / B;
     }
     
     double getReluctivityDerivative(double B) const override{
-        if (B < 1e-10) {
-                   return 0.0;
+
+        if (B < 1e-12) {
+            return 0.0;
             // throw std::runtime_error("B is smaller than ")
         }
+
+
+        double dx = 0;
+        double function = 0;
+        double dx2 = 0;
+        alglib::spline1ddiff(s_, B, function, dx, dx2);
+        
         // std::cout << "reluctivity derivative : " << 1e10  * ((B / (B * B + 1)) - std::atan(B)) / (B * B) << std::endl;  
-        return ((beta_ * B / (beta_ * beta_ * B * B + 1)) - std::atan(beta_ * B)) / (B * B);
+        // return ((beta_ * B / (beta_ * beta_ * B * B + 1)) - std::atan(beta_ * B)) / (B * B);
+        // std::cout << "B : " << B << std::endl; 
+        // std::cout << "dx";
+        // std::cout << "reluctivity derivative : " <<  dx/B - function/(B*B) << std::endl; 
+        // if (dx/B - function/(B*B) < 0) throw std::runtime_error("derivative smaller than zero");
+        return dx/B - function/(B*B); 
     }
 
 private:
-    const double mu_initial_;
-    double beta_ = 1e9; 
-
+    alglib::spline1dinterpolant s_;
 };
 
 // Factory to create materials
@@ -87,7 +149,7 @@ public:
         switch(material_tag) {
             case 3: // ring
                 // throw std::runtime_error("found a ring element");
-                return std::make_shared<FerromagneticMaterial>(1/(0.999994));
+                return std::make_shared<FerromagneticMaterial>();
             case 2: // cylinder
                 return std::make_shared<LinearMaterial>(1/(0.999994));  // nu_r = 1/mu_r
             case 1: //air

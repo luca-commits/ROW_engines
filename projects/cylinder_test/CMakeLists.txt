@@ -135,6 +135,24 @@ target_link_libraries(projects.cylinder_test.solve_non-linear
   lf.uscalfe
   BLAS::BLAS
   /usr/local/lib/libgmsh.dylib
+  PRIVATE alglib
+)
+
+target_link_libraries(projects.cylinder_test.test_permeability
+  PUBLIC Boost::program_options Eigen3::Eigen
+  lf.assemble
+  lf.base
+  lf.geometry
+  lf.io
+  lf.mesh
+  lf.mesh.hybrid2d
+  lf.mesh.test_utils
+  lf.mesh.utils
+  lf.refinement
+  lf.uscalfe
+  BLAS::BLAS
+  /usr/local/lib/libgmsh.dylib
+  PRIVATE alglib
 )
 
 # Set target properties
@@ -144,12 +162,13 @@ target_link_libraries(projects.cylinder_test.solve_non-linear
 set_target_properties(projects.cylinder_test.solve_non-linear   PROPERTIES FOLDER "projects/cylinder_test")
 
 set_target_properties(projects.cylinder_test.test_meshes   PROPERTIES FOLDER "projects/cylinder_test")
-set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
+# set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
 set_target_properties(projects.cylinder_test.test_permeability   PROPERTIES FOLDER "projects/cylinder_test")
 # set_target_properties(projects.cylinder_test.test_dof_mapping   PROPERTIES FOLDER "projects/cylinder_test")
 
 # target_include_directories(projects.cylinder_test.solve_with_rotation PUBLIC /usr/local/include)
 target_include_directories(projects.cylinder_test.solve_non-linear PUBLIC /usr/local/include)
+
 
 # Add custom targets for running
 # add_custom_target(projects.cylinder_test.solve_eddy_run     COMMAND static)

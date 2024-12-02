@@ -117,7 +117,21 @@ const Eigen::Matrix<double, 3, 3>  ElemMat_N_Provider::Eval(const lf::mesh::Enti
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   Eigen::Matrix <double , 2 , 3> temp = GradsBaryCoords(V);
   Eigen::MatrixXd temp_transpose = temp.transpose() * grad_xn; 
+
+  // if (material_tag == 3){
+  //   std::cout << "grad_xn " << std::endl << grad_xn << std::endl;
+  //   std::cout << "GradBaryCoords: " << GradsBaryCoords(V) << std::endl;
+  //   std::cout << "reluctivity derivative " << reluctivity_derivative << std::endl ; 
+  //   std::cout << "magnetic field " << B_field.norm() << std::endl; 
+  //   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  //   std::cout << "area : " << area << std::endl;
+  //   std::cout << "element matrix N : " << std::endl << reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose() << std::endl; 
+  //   // assert(false); 
+  // }
+
+
   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+
   return reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose(); 
 }
 
@@ -229,14 +243,13 @@ std::tuple<const Eigen::SparseMatrix<double>,
     }
   }                                 
   Eigen::VectorXd phi_copy = phi;    
-  std::cout << "A norm : " << A.makeSparse().norm() << std::endl;
+
   lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
     return ess_dof_select[dof_idx];}, A, phi);
-  std::cout << "A norm : " << A.makeSparse().norm() << std::endl;
-  std::cout << "M norm : " << A.makeSparse().norm() << std::endl;
+
   lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &M, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
     return ess_dof_select[dof_idx];}, M, phi_copy);
-  std::cout << "M norm : " << A.makeSparse().norm() << std::endl;
+
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
   return {A_crs, M_crs, phi};
@@ -275,11 +288,10 @@ std::tuple<const Eigen::SparseMatrix<double>,
       }
     }                                 
    
-   std::cout << "N norm " << N.makeSparse().norm() << std::endl;
     lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &rho](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> { // probably need to change this 
                                                                                                                                           // since rhs is a combination of different stuff
       return ess_dof_select[dof_idx];}, N, rho);
-  std::cout << "N norm " << N.makeSparse().norm() << std::endl;
+
   const Eigen::SparseMatrix<double> N_crs = N.makeSparse();
   return{N_crs, rho}; 
 }

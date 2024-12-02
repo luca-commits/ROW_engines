@@ -44,7 +44,7 @@ Eigen::VectorXd newton_step(const Eigen::SparseMatrix<double>& N,
                             const Eigen::VectorXd & phi){
 
     Eigen::SparseMatrix<double> lhs = A * timestep + M + N * timestep ;
-    Eigen::VectorXd rhs = - phi * timestep - M * previous_time_step + rho * timestep + M * previous_newton_step;
+    Eigen::VectorXd rhs = - phi * timestep - M * previous_time_step + M * previous_newton_step + A * previous_newton_step * timestep ;
     lf::assemble::dim_t N_dofs = phi.size();
     Eigen::VectorXd next_timestep(N_dofs);
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
