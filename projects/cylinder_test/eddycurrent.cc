@@ -74,6 +74,10 @@ const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity 
   Eigen::VectorXd B_field = magnetic_flux_result[0];
 
   double reluctivity = material->getReluctivity(B_field.norm());
+  double reluctivity_derivative = material-> getReluctivityDerivative(B_field.norm());
+
+
+
   // std::cout << "reluctivity " << reluctivity << std::endl; 
   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
@@ -82,6 +86,19 @@ const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity 
   temp.block<1, 3>(0, 0) = X.block<1,3> (1, 0);
   temp.block<1, 3>(1, 0) = X.block<1,3> (0, 0);
   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  // std::cout << "element matrix A : " << std::endl << reluctivity * area * temp.transpose() * temp << std::endl; 
+
+  // if (material_tag == 3 && B_field.norm() > 0.001){
+  //   std::cout << "GradBaryCoords: " << GradsBaryCoords(V) << std::endl;
+  //   std::cout << "reluctivity " << reluctivity << std::endl ; 
+  //   std::cout << "reluctivity derivative : " << reluctivity_derivative << std::endl ; 
+  //   std::cout << "magnetic field " << B_field.norm() << std::endl; 
+  //   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  //   std::cout << "area : " << area << std::endl;
+  //   std::cout << "element matrix A : " << std::endl << reluctivity * area * temp.transpose() * temp << std::endl; 
+  //   std::cout << std::endl << std::endl; 
+  //   // assert(false); 
+  // }
   return reluctivity * area * temp.transpose() * temp; 
 }
 
@@ -118,14 +135,17 @@ const Eigen::Matrix<double, 3, 3>  ElemMat_N_Provider::Eval(const lf::mesh::Enti
   Eigen::Matrix <double , 2 , 3> temp = GradsBaryCoords(V);
   Eigen::MatrixXd temp_transpose = temp.transpose() * grad_xn; 
 
-  // if (material_tag == 3){
+  // if (material_tag == 3 && B_field.norm() > 0.8){
+  //   std::cout << "B : " << B_field.norm() << std::endl;
+  
   //   std::cout << "grad_xn " << std::endl << grad_xn << std::endl;
   //   std::cout << "GradBaryCoords: " << GradsBaryCoords(V) << std::endl;
   //   std::cout << "reluctivity derivative " << reluctivity_derivative << std::endl ; 
   //   std::cout << "magnetic field " << B_field.norm() << std::endl; 
   //   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   //   std::cout << "area : " << area << std::endl;
-  //   std::cout << "element matrix N : " << std::endl << reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose() << std::endl; 
+  //   std::cout << "element matrix N : " << std::endl <<  reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose() << std::endl; 
+  //   std::cout << std::endl << std::endl; 
   //   // assert(false); 
   // }
 
@@ -134,7 +154,6 @@ const Eigen::Matrix<double, 3, 3>  ElemMat_N_Provider::Eval(const lf::mesh::Enti
 
   return reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose(); 
 }
-
 
 
 
@@ -287,10 +306,12 @@ std::tuple<const Eigen::SparseMatrix<double>,
         ess_dof_select.emplace_back ( false , 0 ) ; 
       }
     }                                 
-   
+
+    // std::cout << "N norm : " << (N.makeSparse()).norm() << std::endl; 
     lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &rho](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> { // probably need to change this 
                                                                                                                                           // since rhs is a combination of different stuff
       return ess_dof_select[dof_idx];}, N, rho);
+    // std::cout << "N norm : " << (N.makeSparse()).norm() << std::endl; 
 
   const Eigen::SparseMatrix<double> N_crs = N.makeSparse();
   return{N_crs, rho}; 
