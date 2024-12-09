@@ -34,16 +34,17 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A, const 
     return next_timestep;
 }
 
-Eigen::VectorXd newton_step(const Eigen::SparseMatrix<double>& N, 
+Eigen::VectorXd newton_step(const Eigen::SparseMatrix<double>& N,
                             const Eigen::SparseMatrix<double>& A, 
                             const Eigen::SparseMatrix<double>& M, 
                             double timestep, 
                             const Eigen::VectorXd & previous_newton_step, 
-                            const Eigen::VectorXd & previous_time_step,  
-                            const Eigen::VectorXd & rho, 
+                            const Eigen::VectorXd & previous_time_step,
                             const Eigen::VectorXd & phi){
-
-    Eigen::SparseMatrix<double> lhs = A * timestep + M + N * timestep ;
+    std::cout << "A norm: " << A.norm() << std::endl; 
+    std::cout << "M norm: " << M.norm() << std::endl;
+    std::cout << "N norm: " << N.norm() << std::endl; 
+    Eigen::SparseMatrix<double> lhs = A * timestep + M +  N * timestep;
     Eigen::VectorXd rhs = - phi * timestep - M * previous_time_step + M * previous_newton_step + A * previous_newton_step * timestep ;
     lf::assemble::dim_t N_dofs = phi.size();
     Eigen::VectorXd next_timestep(N_dofs);
@@ -64,7 +65,5 @@ Eigen::VectorXd newton_step(const Eigen::SparseMatrix<double>& N,
 
     return next_timestep;
 }
-
-
 
 #endif //IMPLICIT_EULER_H

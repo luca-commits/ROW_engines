@@ -12,7 +12,7 @@ int main (int argc, char *argv[]){
     std::cout << "Hiiii " << std::endl;
 
     double total_time;
-    unsigned timesteps;
+    double step_size;
     std::string mesh_name; 
     double max_current = 1000;
     double conductivity_ring = 5.96e7;
@@ -22,10 +22,10 @@ int main (int argc, char *argv[]){
     std::ifstream infile("xinput.txt");
     if (infile.is_open()){
         // Read total_time and timesteps
-        if (!(infile >> total_time)){
-            std::cerr << "Error reading total_time" << std::endl;
+        if (!(infile >> step_size)){
+            std::cerr << "Error reading time step size" << std::endl;
         }
-        if (!(infile >> timesteps)){  
+        if (!(infile >> total_time)){  
             std::cerr << "Error reading timesteps" << std::endl;
         }
         if (!(infile >> mesh_name)){
@@ -51,7 +51,6 @@ int main (int argc, char *argv[]){
 
     std::cout << "newton_steps  " << newton_steps << std::endl;
 
-    double step_size = total_time / double(timesteps); 
     std::cout << std::endl << "timestep: " << step_size << std::endl;
 
     std::filesystem::path here = __FILE__;
@@ -96,9 +95,12 @@ int main (int argc, char *argv[]){
     double angle_step = M_PI / 360 ; 
 
     Eigen::VectorXd current_time_step = Eigen::VectorXd::Zero(dofh_temp.NumDofs());
+    
+    unsigned total_newton_steps = 0; 
+    double time = 0; 
 
   
-    for (unsigned i = 0; i < timesteps; ++i){
+    for (unsigned i = 0; time < total_time; ++i, time += step_size){
 
         double rel_angle = angle_step * i;
         remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh",  M_PI * rel_angle);
@@ -122,10 +124,12 @@ int main (int argc, char *argv[]){
         Eigen::VectorXd current_newton_step = current_time_step; 
         Eigen::VectorXd current_newton_step_copy; 
         
-        double newton_tolerance = 1e-7; 
+        double newton_tolerance = 1e-5; 
         double newton_residual = 1000; 
 
-        for (unsigned j = 1; newton_residual >  newton_tolerance && j < 10; ++j){ //j < newton_steps
+        for (unsigned j = 1; newton_residual >  newton_tolerance && j < 20; ++j){ //j < newton_steps
+            ++total_newton_steps; 
+
             // if (j > 20) 
             //     throw std::runtime_error("too many newton iterations, no hope for convergence"); 
             std::cout << "timestep: " << i << std::endl;
@@ -134,16 +138,24 @@ int main (int argc, char *argv[]){
             utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl);
             auto [N, rho] = eddycurrent::N_rho_assembler(mesh_p, cell_tag, mf_curl, mf_grad);
+            // const Eigen::SparseMatrix<double> N;
 
-            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_time_step, rho, phi); //  current_newton_step
+            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_time_step, phi); //  current_newton_step
 
-            auto lhs = (step_size * A + M);
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad_next(fe_space, next_newton_step);
+            utils::MeshFunctionCurl2DFE mf_curl_next(mf_grad_next);
+            auto [A_next, M_next, phi_next] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_next);
+
+
+            // next_newton_step = current_newton_step - newton_step(A, M, step_size, current_newton_step, current_time_step, phi); //  current_newton_step
+
+            auto lhs = (step_size * A_next + M);
             auto rhs =  M * current_time_step + step_size * phi;
 
             Eigen::VectorXd residual = lhs * next_newton_step - rhs;
-            newton_residual = (lhs * next_newton_step - rhs).norm()/ rhs.norm(); 
+            newton_residual = (lhs * next_newton_step - rhs).lpNorm<Eigen::Infinity>() / rhs.lpNorm<Eigen::Infinity>(); 
 
-            std::cout << "newton residual " << newton_residual << std::endl; 
+            if (rhs.lpNorm<Eigen::Infinity>() > 1e-15) std::cout << "newton residual " << newton_residual << std::endl; 
             current_newton_step_copy = current_newton_step; 
             current_newton_step = next_newton_step; 
         }
@@ -151,19 +163,21 @@ int main (int argc, char *argv[]){
 
         Eigen::VectorXd next_timestep = next_newton_step;
 
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_newton_step_copy);
-        utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, next_timestep);
+        utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
 
 
-        auto [A_temp, M_temp, phi_temp] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
-        auto lhs = (step_size * A_temp + M_temp);
-        auto rhs =  M_temp * current_time_step + step_size * phi_temp;
+        auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl);
+        auto lhs = (step_size * A + M);
+        auto rhs =  M * current_time_step + step_size * phi;
         Eigen::VectorXd residual = lhs * next_newton_step - rhs;
-        double rel_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
-        std::cout << "Right hand side : " << rhs.norm() << std::endl; 
-        std::cout << "Left hand side : " << (lhs * next_newton_step).norm() << std::endl; 
+        double rel_residual = (lhs * next_timestep - rhs).lpNorm<Eigen::Infinity>()  / rhs.lpNorm<Eigen::Infinity>(); 
+        std::cout << "Right hand side : " << rhs.lpNorm<Eigen::Infinity>() << std::endl; 
+        std::cout << "Left hand side : " << (lhs * next_newton_step).lpNorm<Eigen::Infinity>() << std::endl; 
 
-        std::cout << "Final newton residual " << rel_residual << std::endl; 
+        
+
+        if (rhs.lpNorm<Eigen::Infinity>() > 1e-15) std::cout << "Final newton residual " << rel_residual << std::endl; 
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
         Eigen::VectorXd discrete_solution = next_timestep;
@@ -199,16 +213,27 @@ int main (int argc, char *argv[]){
             Eigen::Vector2d center_of_triangle;
              center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
                                              //angle, but I'll take [0.5, 0.5
-            auto magnetic_flux = mf_curl_temp(*cell, center_of_triangle);
+            auto magnetic_flux = mf_curl(*cell, center_of_triangle);
             Eigen::VectorXd B_field = magnetic_flux[0];
 
-            double reluctivity = material->getReluctivity(B_field.norm());
+            double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
             double permeability = 1/reluctivity; 
             relative_permeability(*cell) = permeability / 1.256e-6;
         }
 
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
-        utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
+
+        lf::mesh::utils::CodimMeshDataSet<double> gradient_norm_at_center{mesh_p, 0, -1};
+
+        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+
+            Eigen::Vector2d center_of_triangle;
+             center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
+                                             //angle, but I'll take [0.5, 0.5
+            gradient_norm_at_center(*cell) = mf_grad(*cell, center_of_triangle)[0].norm();
+        }
+
+        // lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
+        // utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
         utils::MeshFunctionH mf_H(mf_curl, cell_permeability);
         vtk_writer.WritePointData("induced-current", *current);
         vtk_writer.WriteCellData("B", mf_curl);
@@ -217,8 +242,12 @@ int main (int argc, char *argv[]){
         vtk_writer.WriteCellData("Relative_Permeability", relative_permeability);
         vtk_writer.WriteCellData("H_field", mf_H);
         vtk_writer.WriteCellData("gradients", mf_grad); 
+        vtk_writer.WriteCellData("gradient_norm_at_center", gradient_norm_at_center); 
+        
         // current_timestep = current_time_step.head(number_stable_dofs);
         current_time_step = next_timestep; 
     }
+    std::cout << "total_newton_steps" << total_newton_steps << std::endl ; 
+
     return 0; 
 }
