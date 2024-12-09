@@ -65,7 +65,7 @@ public:
                 // and see that such spline interpolated f(x) with small error.
                 //
 
-                std::ifstream infile("tabular_permeability.txt");
+                std::ifstream infile("tabular_data.txt");
                 std::string x_str, y_str;
 
                 if (infile.is_open()) {
@@ -95,6 +95,7 @@ public:
     }
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
+        if (B.norm() > 2.16) throw std::runtime_error("Magnetic field too big, no experimental data");
         return getReluctivity(B.norm()) * B; 
     }
 

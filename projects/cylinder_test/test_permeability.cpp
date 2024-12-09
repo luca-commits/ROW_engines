@@ -40,12 +40,14 @@ int main(){
     const double mu0 = 4 * M_PI * 1e-7;  // Permeability of free space
     
     // Use smaller steps for smoother curve
-    for (double B = 0; B <= 1e-6; B += 1e-9) {
+    for (double B = 0; B <= 2.16; B += 0.01) {
         double nu = iron -> getReluctivity(B);
         double field = iron -> getReluctivity(B) * B;
         double dnu_dB = iron -> getReluctivityDerivative(B);
         outfile << B << " "<<  field << " " << nu << " " <<dnu_dB<< "\n";
     }
+
+
     
     outfile.close();
 
