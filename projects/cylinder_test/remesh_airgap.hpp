@@ -9,6 +9,7 @@
 
 void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, double angle) {
     gmsh::initialize();
+     gmsh::option::setNumber("General.Terminal", 0);
 
     gmsh::open(airgap_geo_file);
 
@@ -25,6 +26,15 @@ void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, 
     // gmsh::fltk::run();
 
     gmsh::model::mesh::generate(2);
+
+    std::vector<std::size_t> nodeTags;
+    std::vector<double> nodeCoords, nodeParams;
+    gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+
+    // Number of nodes is the size of nodeTags
+    unsigned airgap_nodes = nodeTags.size();
+
+    std::cout << "airgap nodes : " << airgap_nodes << std::endl; 
 
     // Save and show
     gmsh::write(output_file);
@@ -46,8 +56,8 @@ unsigned mergeEverything(const std::string& input_file_stator,
         gmsh::option::setNumber("Geometry.Tolerance", 1e-8);
         gmsh::option::setNumber("Geometry.MatchMeshTolerance", 1e-8);
         
-        gmsh::option::setNumber("Mesh.MshFileVersion", 4.1);
-        gmsh::option::setNumber("Mesh.ScalingFactor", 1.0);
+        // gmsh::option::setNumber("Mesh.MshFileVersion", 4.1);
+        // gmsh::option::setNumber("Mesh.ScalingFactor", 1.0);
 
         gmsh::merge(input_file_rotor);
         gmsh::model::geo::synchronize();

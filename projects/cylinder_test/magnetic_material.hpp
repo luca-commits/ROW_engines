@@ -35,6 +35,7 @@ public:
     }
 
     double getReluctivity(const double /*B*/) const override {
+        // if (nu_r_ == 0)std::cout << "ring reluctivity : " << nu_r_ << std::endl; 
         return nu0_ * nu_r_;
     }
 
@@ -83,8 +84,8 @@ public:
                 alglib::real_1d_array y(y_str.c_str());
 
                 // Build cubic spline with specified boundary condition
-                alglib::spline1dbuildlinear(x, y, s_);
-
+                // std::cout << "build spline monotone : " << std::endl; 
+                alglib::spline1dbuildmonotone(x, y, s_);
                 
             }
             catch(alglib::ap_error alglib_exception)
@@ -96,6 +97,7 @@ public:
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
         if (B.norm() > 2.16) throw std::runtime_error("Magnetic field too big, no experimental data");
+        // std::cout << "permeability : " << 1 / getReluctivity(B.norm()) << std::endl; 
         return getReluctivity(B.norm()) * B; 
     }
 
@@ -103,7 +105,6 @@ public:
     double getReluctivity(double B) const override {
         if (B < 1e-12) {
             double reluctivity = alglib::spline1dcalc(s_, 1e-10) / 1e-10; 
-            // std::cout << "reluctivity: " << reluctivity << std::endl; 
             return reluctivity;  // Return vacuum reluctivity for very small B
         }
 
@@ -111,8 +112,6 @@ public:
         double function = 0;
         double dx2 = 0;
         alglib::spline1ddiff(s_, B, function, dx, dx2);
-        // std::cout << "B : " << B << std::endl; 
-        // std::cout << "reluctivity : " << alglib::spline1dcalc(s_, B) / B << std::endl;
         return function / B;
     }
     
@@ -128,13 +127,6 @@ public:
         double function = 0;
         double dx2 = 0;
         alglib::spline1ddiff(s_, B, function, dx, dx2);
-        
-        // std::cout << "reluctivity derivative : " << 1e10  * ((B / (B * B + 1)) - std::atan(B)) / (B * B) << std::endl;  
-        // return ((beta_ * B / (beta_ * beta_ * B * B + 1)) - std::atan(beta_ * B)) / (B * B);
-        // std::cout << "B : " << B << std::endl; 
-        // std::cout << "dx";
-        // std::cout << "reluctivity derivative : " <<  dx/B - function/(B*B) << std::endl; 
-        // if (dx/B - function/(B*B) < 0) throw std::runtime_error("derivative smaller than zero");
         return dx/B - function/(B*B); 
     }
 
@@ -152,11 +144,11 @@ public:
                 // throw std::runtime_error("found a ring element");
                 return std::make_shared<FerromagneticMaterial>();
             case 2: // cylinder
-                return std::make_shared<LinearMaterial>(1/(0.999994));  // nu_r = 1/mu_r
+                return std::make_shared<LinearMaterial>(1/(1.));  // nu_r = 1/mu_r
             case 1: //air
-                return std::make_shared<LinearMaterial>(1/(1.00000037)); 
+                return std::make_shared<LinearMaterial>(1/(1.)); 
             case 4: //airgap
-                return std::make_shared<LinearMaterial>(1/(1.00000037));                 
+                return std::make_shared<LinearMaterial>(1/(1.));                              
             default:
                 throw std::runtime_error("Unknown material tag: " + std::to_string(material_tag));
         }

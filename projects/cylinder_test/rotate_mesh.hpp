@@ -11,6 +11,7 @@
 
 void rotateAllNodes_alt(const std::string& input_file, const std::string& output_file, double angle) {
     gmsh::initialize();
+     gmsh::option::setNumber("General.Terminal", 0);
     
     // Calculate rotation matrix coefficients once
     double cosA = std::cos(angle);
@@ -45,6 +46,7 @@ void rotateAllNodes_alt(const std::string& input_file, const std::string& output
 
     gmsh::model::mesh::rebuildNodeCache(false);
     gmsh::write(output_file);
+
     
 
 // Finalize GMSH

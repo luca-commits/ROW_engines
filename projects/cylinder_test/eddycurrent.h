@@ -37,9 +37,26 @@ class ElemMatProvider {
  public:
   // Constructor can be used to pass data required for local computations
   ElemMatProvider(lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags,
-                  utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux) :
-                   material_tags_(material_tags)
-                  , cell_magnetic_flux_(cell_magnetic_flux){}
+                  utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux, 
+                  std::shared_ptr<const lf::uscalfe::UniformScalarFESpace<double>> fe_space) :
+                   material_tags_(material_tags), 
+                   fe_precomp_(),
+                   cell_magnetic_flux_(cell_magnetic_flux){
+      for (auto ref_el : {lf::base::RefEl::kTria(), lf::base::RefEl::kQuad()}) {
+        auto fe = fe_space->ShapeFunctionLayout(ref_el);
+        // Check whether shape functions for that entity type are available.
+        // Note that the corresponding PrecomputedScalarReferenceFiniteElement local
+        // object is not initialized if the associated description of local shape
+        // functions is missing.
+        if (fe != nullptr) {
+          // Precompute cell-independent quantities based on quadrature rules
+          // with twice the degree of exactness compared to the degree of the
+          // finite element space.
+          fe_precomp_[ref_el.Id()] = lf::uscalfe::PrecomputedScalarReferenceFiniteElement(
+              fe, lf::quad::make_QuadRule(ref_el, 2 * fe->Degree()));
+        }
+      }
+    }
   // Select cells taken into account during cell-oriented assembly
   virtual bool isActive(const lf ::mesh:: Entity & /*cell*/) { return true; }
   // Compute element matrix for a cell, here a fixed-size matrix
@@ -48,6 +65,7 @@ class ElemMatProvider {
     lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
     utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
     std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
+    std::array<lf::uscalfe::PrecomputedScalarReferenceFiniteElement<double>, 5> fe_precomp_;
 };
 
 class ElemVecProvider{
@@ -63,14 +81,14 @@ class ElemVecProvider{
 
 class MassMatProvider{
   public:
-  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity) :
-                  cell_conductivity_(cell_conductivity){}
+  MassMatProvider(lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity, std::shared_ptr<const lf::fe::ScalarFESpace<double>> fe_space) :
+                  cell_conductivity_(cell_conductivity), fe_space_(fe_space){}
     bool isActive(const lf::mesh::Entity& cell){return true;}; 
     const Eigen::Matrix<double, 3, 3> Eval(const lf::mesh::Entity &cell);
   private:
     lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_;
+    std::shared_ptr<const lf::fe::ScalarFESpace<double>> fe_space_;
 };
-
 
 class ElemMat_N_Provider {
 public:
@@ -114,11 +132,10 @@ class ElemVec_rho_Provider{
 
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
-          lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<double>, 
           lf::mesh::utils::CodimMeshDataSet<double>,
           lf::mesh::utils::CodimMeshDataSet<unsigned>>
-readMeshWithTags(std::string filename, std::map<int, double>, std::map<int, double>, std::map<int, double>);
+readMeshWithTags(std::string filename, std::map<int, double>, std::map<int, double>);
 
 
 Eigen::VectorXd solve(
@@ -153,4 +170,4 @@ std::tuple<const Eigen::SparseMatrix<double>,
 
 
 
-#endif //EDDYCURRENT_H_
+#endif //EDDYCURRENT_H_  
