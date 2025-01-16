@@ -100,3 +100,5 @@ projects/cylinder_test/Analysis/transient/test1.csv
 projects/cylinder_test/results/irregular_ring.avi
 projects/cylinder_test/results/irregular_ring.mp4
 projects/cylinder_test/results/Thumbs.db
+projects/cylinder_test/newton_residuals copy.txt
+projects/cylinder_test/newton_residuals.txt
