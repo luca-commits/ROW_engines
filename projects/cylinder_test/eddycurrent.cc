@@ -88,23 +88,6 @@ const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity 
   double reluctivity_derivative = material-> getReluctivityDerivative(B_field.norm());
 
 
-//   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
-//   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
-//   Eigen::Matrix <double , 2 , 3> X = GradsBaryCoords(V);
-//   Eigen::Matrix <double, 2, 3> temp = X;
-//   temp.block<1, 3>(0, 0) = X.block<1,3> (1, 0);
-//   temp.block<1, 3>(1, 0) = X.block<1,3> (0, 0);
-
-//   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
-
-// //   if (reluctivity > 8e-25){
-// //     std::cout << "reluctivity : " << reluctivity << std::endl;
-// //     std::cout << std::endl << (reluctivity) * area * temp.transpose() * temp << std::endl ; 
-// // }
-
-//   return reluctivity * area * temp.transpose() * temp;
-
-
   // Topological type of the cell
   const lf::base::RefEl ref_el{cell.RefEl()};
   // Obtain precomputed information about values of local shape functions
@@ -163,43 +146,53 @@ const Eigen::Matrix<double, 3, 3>  ElemMatProvider::Eval(const lf::mesh::Entity 
     mat += w * (trf_grad.adjoint() * alpha_trf_grad
                 );
   }
+  // std::cout << std::endl << mat  << std::endl; 
   return mat;
 }
 
-// //compute the flux of A over the boundary of the cell
-// const Eigen::Vector2d  BoundaryVectorProvider::Eval(const lf::mesh::Entity &edge){
-//   Eigen::MatrixXd V_edge = lf::geometry::Corners(*edge.Geometry());
-//   double edge_length = (V_edge.col(1) - V_edge.col(0)).norm();
-//   return 0.5 * edge_length * boundary_current_density_ * Eigen::Vector2d::Ones();
-// }
 
 
 const Eigen::Matrix<double, 3, 3>  ElemMat_N_Provider::Eval(const lf::mesh::Entity &cell){
+
   int material_tag = material_tags_(cell);  
 
   if (materials_.find(material_tag) == materials_.end()) {
       materials_[material_tag] = MaterialFactory::Create(material_tag);
   }
+
   const auto& material = materials_[material_tag];
   Eigen::Vector2d center_of_triangle;
-    center_of_triangle << 0.5 , 0.5; 
+  center_of_triangle << 0.5 , 0.5; 
   auto magnetic_flux = cell_magnetic_flux_(cell, center_of_triangle);
   Eigen::VectorXd B_field = magnetic_flux[0];
   double reluctivity_derivative = material->getReluctivityDerivative(B_field.norm());  
   auto grad_xn_result = cell_grad_xn_(cell, center_of_triangle);
+
   if (grad_xn_result.size() == 0) {
       throw std::runtime_error("cell_grad_xn_ returned empty result");
   }
+
   Eigen::VectorXd grad_xn = grad_xn_result[0];
   // Check grad_xn dimensions
   if (grad_xn.size() != 2) {  // Assuming it should be 2D
       throw std::runtime_error("Unexpected gradient dimension");
   }
+
   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   Eigen::Matrix <double , 2 , 3> temp = GradsBaryCoords(V);
+  auto temp_copy = temp; 
   Eigen::MatrixXd temp_transpose = temp.transpose() * grad_xn; 
   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
+  // if (reluctivity_derivative > 0){
+  //   std::cout << "Gradient " << std::endl << temp_copy << std::endl; 
+  //   std::cout << "magnetic field " << std::endl << grad_xn << std::endl ; 
+  //   std::cout << "derivative " << reluctivity_derivative << std::endl; 
+  //   std::cout << "area : " << area << std::endl; 
+  //   std::cout << "reluctivity : " << material->getReluctivity(B_field.norm()) << std::endl; 
+  //   std::cout << "B_field : " << B_field.norm() << std::endl;
+  //   std::cout << "result : " << std::endl << reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose() << std::endl;
+  // }
   return reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose(); 
 }
 
@@ -291,8 +284,6 @@ std::tuple<const Eigen::SparseMatrix<double>,
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
 
-  std::cout << "A norm: " << A_crs.norm() << std::endl;
-
   // Print number of non-zero elements
 
   return {A_crs, M_crs, phi};
@@ -319,24 +310,6 @@ std::tuple<const Eigen::SparseMatrix<double>,
     Eigen::VectorXd rho(N_dofs);
     lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMat_N_provider, N);
     lf::assemble::AssembleVectorLocally(0, dofh, elemVec_rho_provider, rho);
-
-    // auto bd_flags {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
-
-    // std::vector<std::pair <long, double>> ess_dof_select {};
-    // for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
-    //   const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
-    //   if (bd_flags(dof_node)) {
-    //     ess_dof_select.emplace_back ( true , 1000 ) ; 
-    //   } else {  
-    //     ess_dof_select.emplace_back ( false , 0 ) ; 
-    //   }
-    // }                                 
-
-    // std::cout << "N norm : " << (N.makeSparse()).norm() << std::endl; 
-    // lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &rho](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> { // probably need to change this 
-    //                                                                                                                                       // since rhs is a combination of different stuff
-      // return ess_dof_select[dof_idx];}, N, rho);
-    // std::cout << "N norm : " << (N.makeSparse()).norm() << std::endl; 
 
   const Eigen::SparseMatrix<double> N_crs = N.makeSparse();  
   return{N_crs, rho}; 

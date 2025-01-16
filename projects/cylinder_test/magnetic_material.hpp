@@ -49,70 +49,24 @@ private:
 
 class FerromagneticMaterial : public MagneticMaterial {
 public:
-    FerromagneticMaterial(){
-         try
-            {
-                //
-                // We use cubic spline to interpolate f(x)=x^2 sampled 
-                // at 5 equidistant nodes on [-1,+1].
-                //
-                // First, we use default boundary conditions ("parabolically terminated
-                // spline") because cubic spline built with such boundary conditions 
-                // will exactly reproduce any quadratic f(x).
-                //
-                // Then we try to use natural boundary conditions
-                //     d2S(-1)/dx^2 = 0.0
-                //     d2S(+1)/dx^2 = 0.0
-                // and see that such spline interpolated f(x) with small error.
-                //
-
-                std::ifstream infile("tabular_data.txt");
-                std::string x_str, y_str;
-
-                if (infile.is_open()) {
-                    std::getline(infile, x_str);
-                    std::getline(infile, y_str);
-                    infile.close();
-                } else {
-                    std::cerr << "Error: Unable to open tabular_permeability.txt" << std::endl;
-                    // You might want to check if the file exists in the correct directory
-                    std::cerr << "Current working directory might not be what you expect" << std::endl;
-                }
-
-
-                alglib::real_1d_array x(x_str.c_str());
-                alglib::real_1d_array y(y_str.c_str());
-
-                // Build cubic spline with specified boundary condition
-                // std::cout << "build spline monotone : " << std::endl; 
-                alglib::spline1dbuildmonotone(x, y, s_);
-                
-            }
-            catch(alglib::ap_error alglib_exception)
-            {
-                printf("ALGLIB exception with message '%s'\n", alglib_exception.msg.c_str());
-                throw std::runtime_error("error in construction of spline");
-            }
-    }
+    FerromagneticMaterial() : 
+    max_(5000),
+    c_(100),
+    mu0_(4 * M_PI * 1e-7) {}
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
-        if (B.norm() > 2.16) throw std::runtime_error("Magnetic field too big, no experimental data");
-        // std::cout << "permeability : " << 1 / getReluctivity(B.norm()) << std::endl; 
-        return getReluctivity(B.norm()) * B; 
+        return getReluctivity(B.norm()) * B;     
     }
 
 
     double getReluctivity(double B) const override {
-        if (B < 1e-12) {
-            double reluctivity = alglib::spline1dcalc(s_, 1e-10) / 1e-10; 
-            return reluctivity;  // Return vacuum reluctivity for very small B
-        }
 
-        double dx = 0;
-        double function = 0;
-        double dx2 = 0;
-        alglib::spline1ddiff(s_, B, function, dx, dx2);
-        return function / B;
+        if (B < 1e-12) {
+            getReluctivity(1e-12);
+            // throw std::runtime_error("B is smaller than ")
+        }
+        double relative_permeability = max_ / (1 + std::pow(B, 4) * max_ / c_) + 1;
+        return (1 / relative_permeability) / mu0_;
     }
     
     double getReluctivityDerivative(double B) const override{
@@ -121,17 +75,15 @@ public:
             return 0.0;
             // throw std::runtime_error("B is smaller than ")
         }
-
-
-        double dx = 0;
-        double function = 0;
-        double dx2 = 0;
-        alglib::spline1ddiff(s_, B, function, dx, dx2);
-        return dx/B - function/(B*B); 
+        else{
+            return (4 * max_ * max_ * c_ * std::pow(B, 3)) / std::pow((max_ * c_ + std::pow(B, 4) * max_ + c_), 2) / mu0_;
+        }
     }
 
 private:
-    alglib::spline1dinterpolant s_;
+    double max_ = 5000; 
+    double c_ = 100; 
+    double mu0_ = 4 * M_PI * 1e-7;
 };
 
 // Factory to create materials

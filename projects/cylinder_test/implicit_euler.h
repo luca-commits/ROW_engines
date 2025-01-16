@@ -23,9 +23,9 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,  const
     Eigen::VectorXd next_timestep(N_dofs);
     next_timestep.setZero();
 
-    // Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
-    // solver.compute(lhs);
-    // next_timestep = solver.solve(rhs);
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+    solver.compute(lhs);
+    next_timestep = solver.solve(rhs);
 
     std::cout << "next_timestep.norm() " << next_timestep.norm() << std::endl;
 
@@ -55,8 +55,8 @@ Eigen::VectorXd newton_step(const Eigen::SparseMatrix<double>& N,
     std::cout << "M norm: " << M.norm() << std::endl;
     std::cout << "N norm: " << N.norm() << std::endl; 
 
-    Eigen::SparseMatrix<double> lhs =  A * timestep + M; //+ N * timestep;
-    Eigen::VectorXd rhs =  phi * timestep + M * previous_time_step + M * previous_newton_step + A * previous_newton_step * timestep;
+    Eigen::SparseMatrix<double> lhs =  A * timestep + M + N * timestep;
+    Eigen::VectorXd rhs =  - phi * timestep - M * previous_time_step + M * previous_newton_step + A * previous_newton_step * timestep;
     lf::assemble::dim_t N_dofs = phi.size();
     Eigen::VectorXd next_timestep(N_dofs);
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
