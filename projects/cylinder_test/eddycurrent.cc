@@ -234,8 +234,8 @@ const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &
   return mat;
 }
 
-std::tuple<const Eigen::SparseMatrix<double>, 
-           const Eigen::SparseMatrix<double>, 
+std::tuple<Eigen::SparseMatrix<double>, 
+           Eigen::SparseMatrix<double>, 
            Eigen::VectorXd> A_M_phi_assembler
   (
   std::shared_ptr<const lf::mesh::Mesh> mesh_p,
@@ -290,7 +290,7 @@ std::tuple<const Eigen::SparseMatrix<double>,
 }
 
 
- std::tuple<const Eigen::SparseMatrix<double>, 
+ std::tuple<Eigen::SparseMatrix<double>, 
                   Eigen::VectorXd>
   N_rho_assembler
   (
@@ -351,6 +351,5 @@ const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Ent
   double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   return  area / 3 * result;
 }
-
 
 } // namespace eddycurrent

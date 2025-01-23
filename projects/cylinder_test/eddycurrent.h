@@ -144,8 +144,8 @@ Eigen::VectorXd solve(
     lf::mesh::utils::CodimMeshDataSet<double> &,
     lf::mesh::utils::CodimMeshDataSet<double> &);
 
-std::tuple<const Eigen::SparseMatrix<double>, 
-           const Eigen::SparseMatrix<double>, 
+std::tuple<Eigen::SparseMatrix<double>, 
+           Eigen::SparseMatrix<double>, 
            Eigen::VectorXd
           > A_M_phi_assembler(
   std::shared_ptr<const lf::mesh::Mesh> mesh_p,
@@ -157,7 +157,7 @@ std::tuple<const Eigen::SparseMatrix<double>,
 
 
 
-   std::tuple<const Eigen::SparseMatrix<double>, 
+   std::tuple<Eigen::SparseMatrix<double>, 
                   Eigen::VectorXd> N_rho_assembler
   (
   std::shared_ptr<const lf::mesh::Mesh> mesh_p,
