@@ -69,7 +69,7 @@ residual_file.flush();
     auto mesh_path = std::string(here.remove_filename()) + std::string("meshes/rotating/") + type_of_rotor + "/";
     std::cout << mesh_path;
 
-    auto time_to_current = [max_current, ramp_up_time](double time){
+      auto time_to_current = [max_current, ramp_up_time](double time){
         double rate = 1/ramp_up_time;
         return time < ramp_up_time ? rate * time * max_current : max_current;
     };
@@ -82,8 +82,9 @@ residual_file.flush();
     unsigned numStableNodes = mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh); 
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
-    std::map<int, double> tag_to_permeability{{1,1. * MU_0}, {2,1. * MU_0}, {3, 1. * MU_0}, {4,1. * MU_0}};
-    std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}, {4, 0}};
+    // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
+    std::map<int, double> tag_to_conductivity{{1, 1e-15}, {2, 1e-15}, {3, conductivity_ring}, {4, 1e-15}};
+    std::map<int, double> tag_to_conductivity_precoditioner{{1, 400*1e-5}, {2, 400*1e-5}, {3, conductivity_ring}, {4, 400*1e-5}};
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
@@ -100,69 +101,76 @@ residual_file.flush();
     std::cout << "number_stable_nodes " << numStableNodes << std::endl;
     LF_ASSERT_MSG((number_stable_dofs == numStableNodes), "Something went wrong, the number of stable dofs does not correspond to the number of stableNodes");
 
-    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); //number_stable_dofs
+    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
-    double angle_step = M_PI / 45; 
-
-    std::vector<std::vector<double>> all_timestep_residuals;
-
-    unsigned total_newton_steps = 0; 
+    double angle_step = 2 * M_PI / 60;  //360 / 60 = 6 degrees per timestep
     double time = 0; 
 
   
-    for (unsigned i = 0; time <= total_time; ++i, time += step_size){
+    for (unsigned i = 1; time <= total_time; ++i, time += step_size){
 
-        std::vector<double> timestep_residuals;
+        double newton_residual = 1000; 
 
-        double rel_angle = 0;//angle_step * i;
-        remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh",  M_PI * rel_angle);
-        rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh" , M_PI * rel_angle);
-        std::string final_mesh = mesh_path + "motor.msh";
-        // std::cout << "final mesh : " << final_mesh << std::endl; 
-        unsigned numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh" ,final_mesh);
-        std::cout << "numStableDofs " << numStableNodes << std::endl ;
+
+        double rel_angle = 0; // angle_step * i;
+        std::cout << "angle : " << rel_angle << std::endl;
+        remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
+        rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
+        std::string final_mesh = mesh_path + "motor_" + std::to_string(i) + ".msh";
+        unsigned numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
+        std::cout<< "Final mesh: " << final_mesh << std::endl;
  
-        std::string vtk_filename = std::string("vtk_files/time_dependent/non-linear/eddy_solution_transient_non_linear") + "_" + std::to_string(i) + std::string(".vtk");
-        double time = i * step_size; 
         std::cout << "timestep: " << i << std::endl;
-        std::cout << "time : " << time << std::endl;
+        std::string vtk_filename = std::string("vtk_files/time_dependent/non-linear/" + mesh_name  + "/eddy_solution_transient") + "_" + std::to_string(i) + std::string(".vtk");
+        double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
 
-
         auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+
+
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
         std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
+        std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;        
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep);
+        utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
+        auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
+        
 
-        // Eigen::VectorXd current_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
-        // current_timestep_extended.head(number_stable_dofs) = current_timestep;
-
+        lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
+        // Fill preconditioner conductivity data using the original reader's physical entity numbers
+        for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
+            // Use the physical entity numbers from the original mesh reading
+            unsigned phys_nr = cell_tag(*cell);  // Since we stored this in cell_tag earlier
+            cell_conductivity_preconditioner(*cell) = tag_to_conductivity_precoditioner[phys_nr];
+        }
+            
         Eigen::VectorXd next_newton_step;
         Eigen::VectorXd current_newton_step = current_timestep; //extended          
-        
-        double newton_tolerance = 1e-7; 
-        double newton_residual = 1000; 
+        double newton_tolerance = 1e-3; 
+
+
 
         for (unsigned j = 1; newton_residual >  newton_tolerance; ++j){ //j < newton_steps
 
-            ++total_newton_steps; 
 
             std::cout << "Newton step " << j << std::endl;
             lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, current_newton_step);
             utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
 
             auto [N, rho] = eddycurrent::N_rho_assembler(mesh_p, cell_tag, mf_curl, mf_grad);
-
             // std::cout << "current newton step - current timestep norm : " << (current_newton_step - current_timestep).norm() << std::endl;
 
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad_current_newton_step(fe_space, current_newton_step); //extended
+            utils::MeshFunctionCurl2DFE mf_curl_current_newton_step(mf_grad_current_newton_step);
 
-            lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_newton_step); //extended
-            utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
-            auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
-            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_timestep, phi); //  current_newton_step
-            // Eigen::VectorXd next_newton_step = implicit_euler_step(A, M, step_size, current_timestep, phi);
+            auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_current_newton_step);
+            auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
+
+            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_timestep, phi, M_preconditioner); //  current_newton_step
+
 
             lf::fe::MeshFunctionGradFE<double, double> mf_grad_next(fe_space, next_newton_step);
             utils::MeshFunctionCurl2DFE mf_curl_next(mf_grad_next);
@@ -178,25 +186,17 @@ residual_file.flush();
                      << newton_residual << " "
                      << time << " "
                      << time_to_current(time) << "\n";
-        residual_file.flush();
-
-            timestep_residuals.push_back(newton_residual);
 
             current_newton_step = next_newton_step; 
             std::cout << std::endl;
-        }
+         }
 
         Eigen::VectorXd next_timestep = current_newton_step;
 
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep); //extended
-        utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_solution(fe_space, next_timestep);
+        utils::MeshFunctionCurl2DFE mf_curl_solution(mf_grad_solution);
 
-        auto [A_temp, M_temp, phi_temp] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
 
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, next_timestep);
-        utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
-
-        auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl);
         auto lhs = (step_size * A + M);
         auto rhs =  M * current_timestep + step_size * phi; //extended
         double rel_residual = (lhs * next_timestep - rhs).norm()  / rhs.norm(); 
@@ -205,34 +205,42 @@ residual_file.flush();
         if (rhs.norm() > 1e-15) std::cout << "Final newton residual " << rel_residual << std::endl; 
 
 
-        lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
+      lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
+        vtk_writer.setBinary(true);
         Eigen::VectorXd discrete_solution = next_timestep;
+
+
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
+        utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
+
         auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
             nodal_data->operator()(dofh.Entity(global_idx)) = discrete_solution[global_idx];
         }
         vtk_writer.WritePointData("A*", *nodal_data);
 
-        // Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep) / step_size; //extended
-
-        // Avoid subtracting similar numbers directly
-        Eigen::VectorXd scale = current_timestep.array().abs().max(next_timestep.array().abs());
-        Eigen::VectorXd rel_diff = ((next_timestep.array() / scale.array()) - 
-                                (current_timestep.array() / scale.array()));
-        Eigen::VectorXd backwards_difference = (rel_diff.array() * scale.array()) / step_size;
-
-        std::cout << "backwards_difference : " << (next_timestep  - current_timestep).norm() << std::endl; //extended
-        lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
-
-        lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
-
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
-
-            Eigen::Vector2d center_of_triangle;
-            center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
-                                             //angle, but I'll take [0.5, 0.5
-            induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
+        auto node_conductivity = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
+        for (const lf ::mesh::Entity *cell : mesh_p -> Entities(0)){
+            if(cell_conductivity(*cell) != 0){
+                std::span<const lf::mesh::Entity *const> sub_ent_range = cell -> SubEntities(2);
+                for (const lf::mesh::Entity *sub_ent : sub_ent_range) {
+                    node_conductivity->operator()(*sub_ent) = cell_conductivity(*cell);
+                }
+            }
         }
+        
+        Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep) / step_size;
+
+        std::cout << "next timestep norm : " << next_timestep.norm() << std::endl;
+        std::cout << "current timestep norm : " << current_timestep.norm() << std::endl;
+        std::cout << "Backwards difference norm : " << backwards_difference.norm() << std::endl;
+
+        //visualize current timestep norm 
+        auto current_timestep_mesh = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
+        for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
+            current_timestep_mesh->operator()(dofh.Entity(global_idx)) = current_timestep[global_idx];
+        }
+        vtk_writer.WritePointData("previous_timestep_A", *current_timestep_mesh);
 
 
         lf::mesh::utils::CodimMeshDataSet<double> relative_permeability{mesh_p, 0, -1};
@@ -241,49 +249,59 @@ residual_file.flush();
             auto material = MaterialFactory::Create(material_tag); 
 
             Eigen::Vector2d center_of_triangle;
-             center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
-                                             //angle, but I'll take [0.5, 0.5
+             center_of_triangle << 0.5 , 0.5; 
             auto magnetic_flux = mf_curl(*cell, center_of_triangle);
             Eigen::VectorXd B_field = magnetic_flux[0];
-
             double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
-
-            double permeability = 1 / reluctivity; 
-
-            relative_permeability(*cell) = permeability / 1.256e-6;
+            relative_permeability(*cell) = (1 / reluctivity) / 1.256e-6;
         }
 
         Eigen::Vector2d init_value = Eigen::Vector2d::Zero();
         lf::mesh::utils::CodimMeshDataSet<Eigen::Vector2d> H{mesh_p, 0, init_value};
+
         for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
             int material_tag = cell_tag(*cell); 
             auto material = MaterialFactory::Create(material_tag); 
-
             Eigen::Vector2d center_of_triangle;
-             center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
-                                             //angle, but I'll take [0.5, 0.5
+             center_of_triangle << 0.5 , 0.5; 
             auto magnetic_flux = mf_curl(*cell, center_of_triangle);
             Eigen::VectorXd B_field = magnetic_flux[0];
             double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
-
             H(*cell) = B_field * reluctivity; 
         }
 
+
+        lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
+        lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
+        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+
+            Eigen::Vector2d center_of_triangle;
+            center_of_triangle << 0.5 , 0.5; 
+            induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
+        }
+
+        vtk_writer.WriteCellData("induced-current", induced_current);
+        std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
+
+        //visualize backward difference
+        auto backwards_difference_mesh = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
+        for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
+            backwards_difference_mesh->operator()(dofh.Entity(global_idx)) = backwards_difference[global_idx];
+        }
+        vtk_writer.WritePointData("Backwards_difference", *backwards_difference_mesh);
         vtk_writer.WriteCellData("B", mf_curl);
         vtk_writer.WriteCellData("Conductivity", cell_conductivity);
         vtk_writer.WriteCellData("Prescribed_Current", cell_current);
         vtk_writer.WriteCellData("Relative_Permeability", relative_permeability);
         vtk_writer.WriteCellData("H_field", H);
-        vtk_writer.WriteCellData("gradients", mf_grad); 
-        vtk_writer.WriteCellData("induced_current", induced_current); 
-        
-        // current_timestep = current_time_step.head(number_stable_dofs);
-        // current_timestep = next_timestep.head(number_stable_dofs);
-        current_timestep = next_timestep; 
+
+        std::cout << "current_timestep.size() " << current_timestep.size() << std::endl;
+        std::cout << "next_timestep.size() " << next_timestep.size() << std::endl;
+        current_timestep = next_timestep;
         std::cout << std::endl; 
     }
     residual_file.close();
-    std::cout << "total_newton_steps" << total_newton_steps << std::endl ; 
+
 
     return 0; 
 }
