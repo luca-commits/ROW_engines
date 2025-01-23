@@ -70,8 +70,9 @@ int main (int argc, char *argv[]){
     unsigned numStableNodes = mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh); 
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
-    std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
-    std::map<int, double> tag_to_conductivity{{1, 1e-10}, {2, 1e-10}, {3, conductivity_ring}, {4, 1e-10}};
+    // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
+    std::map<int, double> tag_to_conductivity{{1, 1e7}, {2, 1e7}, {3, 1e7}, {4, 1e7}};
+    std::map<int, double> tag_to_conductivity_precoditioner{{1, 400*1e-5}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}};
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
@@ -94,7 +95,7 @@ int main (int argc, char *argv[]){
     double angle_step = 2 * M_PI / 60;  //360 / 60 = 6 degrees per timestep
     double time = 0; 
 
-    for (unsigned i = 0; time <= total_time; ++i, time += step_size){
+    for (unsigned i = 1; time <= total_time; ++i, time += step_size){
 
         double rel_angle = angle_step * i;
         std::cout << "angle : " << rel_angle << std::endl;
@@ -109,7 +110,6 @@ int main (int argc, char *argv[]){
         double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
-        // tag_to_current = {{1,0},  {2, 1}, {3, 0}, {4, 0}}; 
 
         auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
@@ -124,8 +124,21 @@ int main (int argc, char *argv[]){
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
+        
 
-        Eigen::VectorXd next_timestep = implicit_euler_step(A, M, step_size, current_timestep_extended, phi);
+        lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
+        // Fill preconditioner conductivity data using the original reader's physical entity numbers
+        for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
+            // Use the physical entity numbers from the original mesh reading
+            unsigned phys_nr = cell_tag(*cell);  // Since we stored this in cell_tag earlier
+            cell_conductivity_preconditioner(*cell) = tag_to_conductivity_precoditioner[phys_nr];
+        }
+
+        auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(
+                mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
+
+
+        Eigen::VectorXd next_timestep = implicit_euler_step(A, M, step_size, current_timestep_extended, phi, M_preconditioner);
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
         vtk_writer.setBinary(true);
