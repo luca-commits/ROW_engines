@@ -17,17 +17,16 @@ unsigned BiCGstab(Eigen::SparseMatrix<double>  Matrix, unsigned N,  Precondition
 {
 	double D_PREC = 1e-16;
 	bool verbose = 1;
-	bool debug = false; 
 	double bestRes = 1.0e100;
 	double EuklidRes = 1.0e100;
 	double bestEuklidRes = 1.0e100;
-	bool   Euklid_Output = true;
+	bool   Euklid_Output = 0;
 
 	Eigen::VectorXd v, p, phat, s, shat, t, r, r0;
 	Eigen::VectorXd bestAbsSol(N);
 	bool copyBestSolution = true;
 
-	std::cout << "epsilong is : " << eps << std::endl; 
+
 
 	if(verbose) std::cout << "Start BiCGstab..." << std::endl;
 	//const unsigned min_no_steps=5;
@@ -103,7 +102,6 @@ unsigned BiCGstab(Eigen::SparseMatrix<double>  Matrix, unsigned N,  Precondition
 		resid = s.norm() / nrmb;
 
 		if (verbose) std::cout << "Step " << l << ", resid=" << resid <<  std::endl;
-		if (debug) std::cout << "solution norm " << (Matrix * x).norm() << std::endl; 
 
 		//Catch divergence if it occurs
 		if ((l > 20 && resid > 10.0) || (l > 40 && resid > 1.0) || (l > 60 && resid > 0.1) || (l > 80 && resid > 0.01) && l > min_no_steps)
