@@ -51,7 +51,7 @@ class FerromagneticMaterial : public MagneticMaterial {
 public:
     FerromagneticMaterial() : 
     max_(5000),
-    c_(100),
+    c_(1),
     mu0_(4 * M_PI * 1e-7) {}
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
@@ -60,20 +60,16 @@ public:
 
 
     double getReluctivity(double B) const override {
-
         if (B < 1e-12) {
             getReluctivity(1e-12);
-            // throw std::runtime_error("B is smaller than ")
         }
         double relative_permeability = max_ / (1 + std::pow(B, 4) * max_ / c_) + 1;
         return (1 / relative_permeability) / mu0_;
     }
     
     double getReluctivityDerivative(double B) const override{
-
         if (B < 1e-12) {
             return 0.0;
-            // throw std::runtime_error("B is smaller than ")
         }
         else{
             return (4 * max_ * max_ * c_ * std::pow(B, 3)) / std::pow((max_ * c_ + std::pow(B, 4) * max_ + c_), 2) / mu0_;
