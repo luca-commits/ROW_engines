@@ -101,7 +101,7 @@ residual_file.flush();
     std::cout << "number_stable_nodes " << numStableNodes << std::endl;
     LF_ASSERT_MSG((number_stable_dofs == numStableNodes), "Something went wrong, the number of stable dofs does not correspond to the number of stableNodes");
 
-    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); 
+    Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
     double angle_step = 2 * M_PI / 60;  //360 / 60 = 6 degrees per timestep
@@ -113,7 +113,7 @@ residual_file.flush();
         double newton_residual = 1000; 
 
 
-        double rel_angle = 0; // angle_step * i;
+        double rel_angle = angle_step * i;
         std::cout << "angle : " << rel_angle << std::endl;
         remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
         rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
@@ -133,8 +133,12 @@ residual_file.flush();
 
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
         std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
-        std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;        
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep);
+
+        Eigen::VectorXd current_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
+
+        std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;  
+        current_timestep_extended.head(number_stable_dofs) = current_timestep;       
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
         
@@ -148,7 +152,7 @@ residual_file.flush();
         }
             
         Eigen::VectorXd next_newton_step;
-        Eigen::VectorXd current_newton_step = current_timestep; //extended          
+        Eigen::VectorXd current_newton_step = current_timestep_extended; //extended          
         double newton_tolerance = 1e-3; 
 
 
@@ -169,7 +173,7 @@ residual_file.flush();
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_current_newton_step);
             auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
 
-            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_timestep, phi, M_preconditioner); //  current_newton_step
+            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_timestep_extended, phi, M_preconditioner); //  current_newton_step
 
 
             lf::fe::MeshFunctionGradFE<double, double> mf_grad_next(fe_space, next_newton_step);
@@ -178,7 +182,7 @@ residual_file.flush();
             auto [A_next, M_next, phi_next] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_next);
 
             Eigen::SparseMatrix<double> lhs = (step_size * A_next + M);
-            Eigen::VectorXd rhs =  M * current_timestep + step_size * phi; //extended
+            Eigen::VectorXd rhs =  M * current_timestep_extended + step_size * phi; //extended
             newton_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
             std::cout << "newton residual " << newton_residual << std::endl;
                     residual_file << i << " " 
@@ -198,7 +202,7 @@ residual_file.flush();
 
 
         auto lhs = (step_size * A + M);
-        auto rhs =  M * current_timestep + step_size * phi; //extended
+        auto rhs =  M * current_timestep_extended + step_size * phi; //extended
         double rel_residual = (lhs * next_timestep - rhs).norm()  / rhs.norm(); 
         std::cout << "Right hand side : " << rhs.norm() << std::endl; 
         std::cout << "Left hand side : " << (lhs * next_timestep).norm() << std::endl; 
@@ -229,16 +233,16 @@ residual_file.flush();
             }
         }
         
-        Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep) / step_size;
+        Eigen::VectorXd backwards_difference = (next_timestep  - current_timestep_extended) / step_size;
 
         std::cout << "next timestep norm : " << next_timestep.norm() << std::endl;
-        std::cout << "current timestep norm : " << current_timestep.norm() << std::endl;
+        std::cout << "current timestep norm : " << current_timestep_extended.norm() << std::endl;
         std::cout << "Backwards difference norm : " << backwards_difference.norm() << std::endl;
 
         //visualize current timestep norm 
         auto current_timestep_mesh = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
-            current_timestep_mesh->operator()(dofh.Entity(global_idx)) = current_timestep[global_idx];
+            current_timestep_mesh->operator()(dofh.Entity(global_idx)) = current_timestep_extended[global_idx];
         }
         vtk_writer.WritePointData("previous_timestep_A", *current_timestep_mesh);
 
@@ -297,7 +301,7 @@ residual_file.flush();
 
         std::cout << "current_timestep.size() " << current_timestep.size() << std::endl;
         std::cout << "next_timestep.size() " << next_timestep.size() << std::endl;
-        current_timestep = next_timestep;
+        current_timestep = next_timestep.head(number_stable_dofs);
         std::cout << std::endl; 
     }
     residual_file.close();
