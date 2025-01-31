@@ -256,7 +256,7 @@ std::tuple<Eigen::SparseMatrix<double>,
 
   lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
   lf::assemble::COOMatrix<double> M(N_dofs, N_dofs);
-
+  
   Eigen::VectorXd phi = Eigen::VectorXd::Constant(N_dofs, 0);
   Eigen::VectorXd phi_boundary = Eigen::VectorXd::Constant(N_dofs, 0);
   
@@ -280,6 +280,9 @@ std::tuple<Eigen::SparseMatrix<double>,
       ess_dof_select.emplace_back ( false , 0 ) ; 
     }
   }                                 
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, A, phi);
+
 
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
