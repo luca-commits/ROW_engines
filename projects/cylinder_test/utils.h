@@ -28,6 +28,7 @@ class MeshFunctionCurl2DFE{
                 temp[0] = gradients[i][1];
                 temp[1] = -gradients[i][0];
                 result[i] = temp;
+                // std::cout << "curl norm " << temp.norm() << std::endl; 
             }
             return result; 
         }
@@ -187,7 +188,42 @@ public:
     }
 };
 
-
+// //function that given mesh_p and cell_tag returns two sets of dofs: one corresponding to conducting cells (conductivity > 0) 
+// //and one corresponding to non-conducting cells (conductivity == 0)
+// //dofs that are both in conducting and non-conducting cells are considered as non-conducting
+// inline std::pair<std::set<lf::base::size_type>, std::set<lf::base::size_type>> getConductingDofs(
+//     const std::shared_ptr<const lf::mesh::Mesh>& mesh_p,
+//     const lf::mesh::utils::CodimMeshDataSet<double>& cell_conductivity,
+//     const lf::uscalfe::FeSpaceLagrangeO1<double>& fe_space) {
+    
+//     const lf::assemble::DofHandler& dofh{fe_space.LocGlobMap()};
+    
+//     std::set<lf::base::size_type> conducting_dofs;
+//     std::set<lf::base::size_type> non_conducting_dofs;
+    
+//     for (const lf::mesh::Entity* cell : mesh_p->Entities(0)) {
+//         double conductivity = cell_conductivity(*cell);
+//         auto nodes = cell->SubEntities(2);
+//         for (const lf::mesh::Entity* node : nodes) {
+//             lf::base::size_type dof = dofh.GlobalDofIndices(*node)[0];
+//             //only add the dof to the set if it is not already in the non_conducting_dofs set
+//             // if conductivity == 0, check if the dof is already in the conducting_dofs set, if it is, remove it
+//             if (conductivity == 0) 
+//             {
+//                 if (conducting_dofs.contains(dof)) {
+//                     conducting_dofs.erase(dof);
+//                 }
+//                 non_conducting_dofs.insert(dof); 
+//             } else {
+//                 if (!non_conducting_dofs.contains(dof)) {
+//                     conducting_dofs.insert(dof);
+//                 }
+//             }
+//         }
+//     }
+    
+//     return {conducting_dofs, non_conducting_dofs};
+// }
 
 } //namespace utils
 
