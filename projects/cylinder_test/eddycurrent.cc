@@ -4,7 +4,6 @@
 #include <cstdlib> // For rand()
 #include <ctime>   // For seeding random generator
 
-
 namespace eddycurrent{
 
 Eigen::Matrix<double, 2, 3> GradsBaryCoords(
@@ -21,6 +20,22 @@ Eigen::Matrix<double, 2, 3> GradsBaryCoords(
   // Compute the gradients of the barycentric coordinate functions
   // as columns of a 2x3 matrix containing the \beta-coefficients in (2.4.5.10).
   return X.inverse().block<2, 3>(1, 0);
+}
+
+
+//this function is used when we already have read the mesh and just need to recompute the currents
+//for the increments
+lf::mesh::utils::CodimMeshDataSet<double>
+getCellCurrent(std::shared_ptr<const lf::mesh::Mesh> mesh_p, 
+               std::map<int, double> tag_to_current, 
+               lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tag){
+  lf::mesh::utils::CodimMeshDataSet<double> cell_current{mesh_p, 0, -1};
+
+  for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+    cell_current(*cell) = tag_to_current[cell_tag(*cell)];
+  }
+
+  return cell_current;
 }
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
@@ -51,16 +66,6 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
     cell_current(*cell) = tag_to_current[reader.PhysicalEntityNr(*cell)[0]];
     cell_conductivity(*cell) = tag_to_conductivity[reader.PhysicalEntityNr(*cell)[0]];
     cell_tag(*cell) = reader.PhysicalEntityNr(*cell)[0];
-    // bool is_boundary_cell = false;
-    // for (const lf::mesh::Entity* edge : cell->SubEntities(1)) {
-    //     if (bd_edge_flags(*edge)) {
-    //         is_boundary_cell = true;
-    //         break;
-    //     }
-    // }
-    // if (is_boundary_cell) {
-    //     cell_current(*cell) = - 1 * current;
-    // }
   }
   return {mesh_p, cell_current, cell_conductivity, cell_tag};
 }
@@ -184,15 +189,6 @@ const Eigen::Matrix<double, 3, 3>  ElemMat_N_Provider::Eval(const lf::mesh::Enti
   auto temp_copy = temp; 
   Eigen::MatrixXd temp_transpose = temp.transpose() * grad_xn; 
   double area = 0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
-  // if (reluctivity_derivative > 0){
-  //   std::cout << "Gradient " << std::endl << temp_copy << std::endl; 
-  //   std::cout << "magnetic field " << std::endl << grad_xn << std::endl ; 
-  //   std::cout << "derivative " << reluctivity_derivative << std::endl; 
-  //   std::cout << "area : " << area << std::endl; 
-  //   std::cout << "reluctivity : " << material->getReluctivity(B_field.norm()) << std::endl; 
-  //   std::cout << "B_field : " << B_field.norm() << std::endl;
-  //   std::cout << "result : " << std::endl << reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose() << std::endl;
-  // }
   return reluctivity_derivative * 2 * area * temp_transpose * temp_transpose.transpose(); 
 }
 
@@ -233,6 +229,44 @@ const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &
 
   return mat;
 }
+
+Eigen::VectorXd phi_assembler
+  ( std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+    lf::mesh::utils::CodimMeshDataSet<double> & cell_current
+  )
+{
+  auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+
+  const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+
+  const lf::base::size_type N_dofs(dofh.NumDofs());
+  LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
+                " N_dofs must agree with number of nodes");
+
+  lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
+  
+  Eigen::VectorXd phi = Eigen::VectorXd::Constant(N_dofs, 0);
+  Eigen::VectorXd phi_boundary = Eigen::VectorXd::Constant(N_dofs, 0);
+  
+  ElemVecProvider elemVecProv (cell_current);
+  lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv, phi);
+
+  auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
+
+  std::vector<std::pair <long, double>> ess_dof_select {};
+  for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+    const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
+    if (bd_flags_temp(dof_node)) {
+      ess_dof_select.emplace_back ( true , 0 ) ; 
+    } else {  
+      ess_dof_select.emplace_back ( false , 0 ) ; 
+    }
+  }                                 
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];}, A, phi);
+  return phi;
+}
+
 
 std::tuple<Eigen::SparseMatrix<double>, 
            Eigen::SparseMatrix<double>, 
@@ -279,10 +313,11 @@ std::tuple<Eigen::SparseMatrix<double>,
     } else {  
       ess_dof_select.emplace_back ( false , 0 ) ; 
     }
-  }                                 
-    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
-    return ess_dof_select[dof_idx];}, A, phi);
+  }
 
+  lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    return ess_dof_select[dof_idx];
+  }, A, phi);
 
   const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
   const Eigen::SparseMatrix<double> M_crs = M.makeSparse();
@@ -318,31 +353,95 @@ std::tuple<Eigen::SparseMatrix<double>,
   return{N_crs, rho}; 
 }
 
+Eigen::SparseMatrix<double>
+  N_assembler
+  (
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+  utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
+  lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
+  ){
+    auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+    const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+    const lf::base::size_type N_dofs(dofh.NumDofs());
+    lf::assemble::COOMatrix<double> N(N_dofs, N_dofs);
+    ElemMat_N_Provider elemMat_N_provider(cell_tags, cell_B, cell_grad_xn);
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMat_N_provider, N);
+
+    auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
+
+    std::vector<std::pair <long, double>> ess_dof_select {};
+    for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+      const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
+      if (bd_flags_temp(dof_node)) {
+        ess_dof_select.emplace_back ( true , 0 ) ; 
+      } else {  
+        ess_dof_select.emplace_back ( false , 0 ) ; 
+      }
+    }
+
+    Eigen::VectorXd phi = Eigen::VectorXd::Zero(N_dofs); 
+
+    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+      return ess_dof_select[dof_idx];
+    }, N, phi);
+
+    const Eigen::SparseMatrix<double> N_crs = N.makeSparse();  
+    return N_crs; 
+}
+
+
+Eigen::VectorXd 
+  rho_assembler
+(
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+  utils::MeshFunctionCurl2DFE<double, double>  & cell_B
+){
+    auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
+    const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+    const lf::base::size_type N_dofs(dofh.NumDofs());
+    ElemVec_rho_Provider elemVec_rho_provider(cell_B, cell_tags);
+    Eigen::VectorXd rho(N_dofs);
+    lf::assemble::AssembleVectorLocally(0, dofh, elemVec_rho_provider, rho);
+
+    auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
+
+    for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+      rho[dofnum] = 0;
+    }
+
+    return rho;
+}
 
 
 // This vector is needed for the Newton iteration
 const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Entity &cell){
 
   int material_tag = material_tags_(cell);
-
   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
   Eigen::Matrix <double , 2 , 3> X = GradsBaryCoords(V);
-
 
   if (materials_.find(material_tag) == materials_.end()) {
       materials_[material_tag] = MaterialFactory::Create(material_tag);
   }
   
   const auto& material = materials_[material_tag];
-  
+
   // Get the magnetic flux density and compute reluctivity
   Eigen::Vector2d center_of_triangle;
   center_of_triangle << 0.5 , 0.5; 
+
   Eigen::VectorXd B_field = cell_magnetic_flux_(cell, center_of_triangle)[0];
   Eigen::Vector2d H_field = material->getH(B_field);
+
   double H_x = H_field[0];
   double H_y = H_field[1]; 
+
+  // std::cout << "B field " << B_field.norm() << std::endl;
+  // std::cout << "H_x " << H_x << std::endl; 
+  // std::cout << "H_y " << H_y << std::endl; 
 
   Eigen::Vector3d result;
 
@@ -351,6 +450,7 @@ const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Ent
   result << H_x * X_transpose(0, 1) - H_y * X_transpose(0, 0), 
             H_x * X_transpose(1, 1) - H_y * X_transpose(1, 0), 
             H_x * X_transpose(2, 1) - H_y * X_transpose(2, 0); 
+
   double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
   return  area / 3 * result;
 }
