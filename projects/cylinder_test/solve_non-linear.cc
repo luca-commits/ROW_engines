@@ -83,7 +83,7 @@ residual_file.flush();
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
     // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
-    std::map<int, double> tag_to_conductivity{{1, 1e-15}, {2, 1e-15}, {3, conductivity_ring}, {4, 1e-15}};
+    std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}, {4, 0}};
     std::map<int, double> tag_to_conductivity_precoditioner{{1, 400*1e-5}, {2, 400*1e-5}, {3, conductivity_ring}, {4, 400*1e-5}};
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
@@ -113,7 +113,7 @@ residual_file.flush();
         double newton_residual = 1000; 
 
 
-        double rel_angle = angle_step * i;
+        double rel_angle = 0; //angle_step * i;
         std::cout << "angle : " << rel_angle << std::endl;
         remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
         rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
@@ -193,7 +193,8 @@ residual_file.flush();
 
             current_newton_step = next_newton_step; 
             std::cout << std::endl;
-         }
+
+        }
 
         Eigen::VectorXd next_timestep = current_newton_step;
 
@@ -277,8 +278,8 @@ residual_file.flush();
 
         lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
         lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
 
+        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
             Eigen::Vector2d center_of_triangle;
             center_of_triangle << 0.5 , 0.5; 
             induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
@@ -292,6 +293,7 @@ residual_file.flush();
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
             backwards_difference_mesh->operator()(dofh.Entity(global_idx)) = backwards_difference[global_idx];
         }
+
         vtk_writer.WritePointData("Backwards_difference", *backwards_difference_mesh);
         vtk_writer.WriteCellData("B", mf_curl);
         vtk_writer.WriteCellData("Conductivity", cell_conductivity);

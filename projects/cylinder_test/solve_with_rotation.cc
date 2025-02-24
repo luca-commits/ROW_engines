@@ -71,7 +71,7 @@ int main (int argc, char *argv[]){
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
     // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
-    std::map<int, double> tag_to_conductivity{{1, 1e-0}, {2, 1e-0}, {3, 1e-0}, {4, 1e-0}};
+    std::map<int, double> tag_to_conductivity{{1, 0e-0}, {2, 0e-0}, {3, 0e-0}, {4, 0e-0}};
     std::map<int, double> tag_to_conductivity_precoditioner{{1, 400*1e-5}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}};
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
@@ -119,7 +119,7 @@ int main (int argc, char *argv[]){
         std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
 
         Eigen::VectorXd current_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
-        
+
         std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;        
         current_timestep_extended.head(number_stable_dofs) = current_timestep; 
         std::cout << "current_timestep_extended.norm() " << current_timestep_extended.norm() << std::endl;
@@ -197,9 +197,9 @@ int main (int argc, char *argv[]){
             H(*cell) = B_field * reluctivity; 
         }
 
-
         lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
         lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
+
         for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
 
             Eigen::Vector2d center_of_triangle;
@@ -220,5 +220,6 @@ int main (int argc, char *argv[]){
         std::cout << "next_timestep.size() " << next_timestep.size() << std::endl;
         current_timestep = next_timestep.head(number_stable_dofs);
     }
+
     return 0; 
 }
