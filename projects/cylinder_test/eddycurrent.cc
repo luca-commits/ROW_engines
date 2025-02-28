@@ -225,8 +225,6 @@ const Eigen::Matrix<double, 3, 3> MassMatProvider::Eval(const lf::mesh::Entity &
     const double w = qr.Weights()[k] * determinants[k];
     mat += w * ((conductivity * rsf.col(k)) * (rsf.col(k).adjoint()));
   }
-
-
   return mat;
 }
 
@@ -380,11 +378,11 @@ Eigen::SparseMatrix<double>
       }
     }
 
-    Eigen::VectorXd phi = Eigen::VectorXd::Zero(N_dofs); 
+    // Eigen::VectorXd phi = Eigen::VectorXd::Zero(N_dofs); 
 
-    lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
-      return ess_dof_select[dof_idx];
-    }, N, phi);
+    // lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
+    //   return ess_dof_select[dof_idx];
+    // }, N, phi);
 
     const Eigen::SparseMatrix<double> N_crs = N.makeSparse();  
     return N_crs; 
@@ -408,7 +406,8 @@ Eigen::VectorXd
     auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
 
     for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
-      rho[dofnum] = 0;
+      const lf::mesh::Entity &dof_node{dofh.Entity(dofnum)};
+      if (bd_flags_temp(dof_node)) rho[dofnum] = 0;
     }
 
     return rho;
@@ -430,6 +429,7 @@ const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Ent
   const auto& material = materials_[material_tag];
 
   // Get the magnetic flux density and compute reluctivity
+  
   Eigen::Vector2d center_of_triangle;
   center_of_triangle << 0.5 , 0.5; 
 
@@ -452,7 +452,7 @@ const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Ent
             H_x * X_transpose(2, 1) - H_y * X_transpose(2, 0); 
 
   double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
-  return  area / 3 * result;
+  return  area * result; //  area / 3 * result;
 }
 
 } // namespace eddycurrent

@@ -90,7 +90,7 @@ public:
         switch(material_tag) {
             case 3: // ring
                 // throw std::runtime_error("found a ring element");
-                return std::make_shared<FerromagneticMaterial>();
+                return std::make_shared<LinearMaterial>(1.);
             case 2: // cylinder
                 return std::make_shared<LinearMaterial>(1/(1.));  // nu_r = 1/mu_r
             case 1: //air

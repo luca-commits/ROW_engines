@@ -22,6 +22,7 @@ Eigen::VectorXd row_step(double timestep,
                                                                       cell_tags, max_current, ramp_up_time);
     Eigen::VectorXd next_timestep = current_timestep;
     for(unsigned i = 0; i < increments.size(); ++i){
+        std::cout << "increment i norm: " << i << " " << increments[i].norm() << std::endl; 
         next_timestep += b[i] * increments[i];
     }
     return next_timestep; 
