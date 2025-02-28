@@ -76,9 +76,7 @@ int main (int argc, char *argv[]){
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
     std::map<int, double>      tag_to_current_derivative{}; 
-    // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
     std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}, {4, 0}};
-    // std::map<int, double> tag_to_conductivity_precoditioner{{1, 400*1e-5}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}};
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
@@ -110,7 +108,6 @@ int main (int argc, char *argv[]){
         std::cout << "timestep: " << i << std::endl;
         std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(i) + std::string(".vtk");
         double time = i * step_size; 
-        // std::cout << "current " << time_to_current(time) << std::endl;
 
         tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
         tag_to_current_derivative = {{1,0},  {2, time_to_current_derivative(time)}, {3, 0}, {4, 0}};
@@ -119,7 +116,6 @@ int main (int argc, char *argv[]){
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
 
         const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-        // std::cout << "N dofs: " << dofh.NumDofs() << std::endl;
       
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
@@ -130,8 +126,6 @@ int main (int argc, char *argv[]){
         Eigen::VectorXd time_derivative = eddycurrent::phi_assembler(mesh_p, cell_current_derivative);        
         Eigen::SparseMatrix<double> N = eddycurrent::N_assembler(mesh_p, cell_tag, mf_curl_temp, mf_grad_temp);
 
-        // std::cout << "A norm " << A.norm() <<std::endl ; 
-        // std::cout << "N norm " << N.norm() << std::endl; 
         Eigen::SparseMatrix<double> jacobian = -(A + N);
 
         Eigen::VectorXd next_timestep = row_step(step_size, time, current_timestep, jacobian, M , time_derivative, mesh_p, cell_tag, max_current, ramp_up_time);
@@ -143,7 +137,6 @@ int main (int argc, char *argv[]){
 
         lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
         utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
-        // discrete_solution[3867] = 1e-7;
 
         auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {

@@ -7,16 +7,18 @@
 
 
 namespace no_rotation{
+
 Eigen::VectorXd function_evaluation(Eigen::VectorXd current_timestep,
-                    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-                    lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags,
-                    double time, 
-                    double max_current, 
-                    double ramp_up_time, 
-                    int x, 
-                    int i,
-                    double timestep,  
-                    bool debug){         
+                                    std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+                                    lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags,
+                                    double time, 
+                                    double max_current, 
+                                    double ramp_up_time, 
+                                    int x, 
+                                    int i,
+                                    double timestep,  
+                                    bool debug){         
+                        
 
     auto time_to_current = [max_current, ramp_up_time](double time){
         double rate = 1/ramp_up_time;
@@ -29,17 +31,12 @@ Eigen::VectorXd function_evaluation(Eigen::VectorXd current_timestep,
 
 
     auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-    // std::cout<< " current timestep norm " << current_timestep.norm() << std::endl; 
 
-    // std::cout << "time to current " << time_to_current(time) << std::endl; 
     lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, current_timestep);
     utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
 
     Eigen::VectorXd rho =  eddycurrent::rho_assembler(mesh_p, cell_tags, mf_curl);
     Eigen::VectorXd load = eddycurrent::phi_assembler(mesh_p, cell_current);
-
-    // std::cout <<  "rho.norm() " << rho.norm() << std::endl; 
-    // std::cout << "load.norm() " << load.norm() << std::endl; 
 
     if (debug){
         std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load") + std::to_string(4*x + i) + std::string(".vtk");
@@ -104,7 +101,6 @@ std::vector<Eigen::VectorXd> increments(double timestep,
 
     for(unsigned i = 0; i < number_stages; ++i){
 
-
         double increment_time = t_0; 
 
         Eigen::VectorXd increments_sum = Eigen::VectorXd::Zero(M.cols());
@@ -132,7 +128,7 @@ std::vector<Eigen::VectorXd> increments(double timestep,
 
         increments.push_back(increment);
 
-        bool debug = 1; 
+        bool debug = 0; 
         if (debug){
             std::string vtk_filename = std::string("vtk_files/time_dependent/debug_") + std::to_string(4*x + i) + std::string(".vtk");
             lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
@@ -157,7 +153,7 @@ std::vector<Eigen::VectorXd> increments(double timestep,
             }
             vtk_writer.WritePointData("jacobian-increment_sum", *nodal_data);
 
-            Eigen::VectorXd timestep_feval = timestep * function_evaluation(increment_solution, mesh_p, cell_tags, increment_time, max_current, ramp_up_time, x, i, timestep, 1) ;
+            Eigen::VectorXd timestep_feval = timestep * function_evaluation(increment_solution, mesh_p, cell_tags, increment_time, max_current, ramp_up_time, x, i, timestep, 0) ;
 
             nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
             for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {

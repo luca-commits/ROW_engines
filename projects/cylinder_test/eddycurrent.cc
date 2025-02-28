@@ -377,13 +377,7 @@ Eigen::SparseMatrix<double>
         ess_dof_select.emplace_back ( false , 0 ) ; 
       }
     }
-
-    // Eigen::VectorXd phi = Eigen::VectorXd::Zero(N_dofs); 
-
-    // lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &N, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
-    //   return ess_dof_select[dof_idx];
-    // }, N, phi);
-
+    
     const Eigen::SparseMatrix<double> N_crs = N.makeSparse();  
     return N_crs; 
 }
@@ -429,7 +423,7 @@ const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Ent
   const auto& material = materials_[material_tag];
 
   // Get the magnetic flux density and compute reluctivity
-  
+
   Eigen::Vector2d center_of_triangle;
   center_of_triangle << 0.5 , 0.5; 
 
