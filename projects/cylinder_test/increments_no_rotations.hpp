@@ -25,10 +25,7 @@ Eigen::VectorXd function_evaluation(Eigen::VectorXd current_timestep,
         return time < ramp_up_time ? rate * time * max_current : max_current;
     };
     std::map<int, double> tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
-    lf::mesh::utils::CodimMeshDataSet<double> cell_current = eddycurrent::getCellCurrent(mesh_p, 
-                                                                                        tag_to_current,
-                                                                                        cell_tags);
-
+    lf::mesh::utils::CodimMeshDataSet<double> cell_current = eddycurrent::getCellCurrent(mesh_p, tag_to_current, cell_tags);
 
     auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
 
@@ -37,28 +34,6 @@ Eigen::VectorXd function_evaluation(Eigen::VectorXd current_timestep,
 
     Eigen::VectorXd rho =  eddycurrent::rho_assembler(mesh_p, cell_tags, mf_curl);
     Eigen::VectorXd load = eddycurrent::phi_assembler(mesh_p, cell_current);
-
-    if (debug){
-        std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load") + std::to_string(4*x + i) + std::string(".vtk");
-        lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
-
-        vtk_writer.setBinary(true);
-
-        auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-        const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-
-        auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-        for (int global_idx = 0; global_idx < rho.rows(); global_idx++) {
-            nodal_data->operator()(dofh.Entity(global_idx)) = timestep * load[global_idx];
-        }
-        vtk_writer.WritePointData("load", *nodal_data);
-
-        nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-        for (int global_idx = 0; global_idx < rho.rows(); global_idx++) {
-            nodal_data->operator()(dofh.Entity(global_idx)) = timestep *  rho[global_idx];
-        }
-        vtk_writer.WritePointData("rho", *nodal_data);
-    }
 
     return load - rho; 
 
@@ -70,11 +45,8 @@ std::vector<Eigen::VectorXd> increments(double timestep,
                                         Eigen::SparseMatrix<double> Jacobian, 
                                         Eigen::SparseMatrix<double> M, 
                                         Eigen::MatrixXd time_derivative,
-                                        std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-                                        lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags,
-                                        double max_current, 
-                                        double ramp_up_time
-                                         ){
+                                        std::function<Eigen::VectorXd(double, Eigen::VectorXd)> f
+                                        ){
 
     unsigned x = t_0 / timestep; 
 
@@ -112,7 +84,7 @@ std::vector<Eigen::VectorXd> increments(double timestep,
             increment_solution += increments[j] * alpha[i - 1][j]; 
         }
 
-        Eigen::VectorXd rhs = timestep * function_evaluation(increment_solution, mesh_p, cell_tags, increment_time, max_current, ramp_up_time, x, i, timestep, 0 ) 
+        Eigen::VectorXd rhs =   timestep * f(increment_time, increment_solution) 
                               + timestep * Jacobian * increments_sum 
                               + timestep * timestep * gamma_i[i] *  time_derivative;
 
@@ -127,53 +99,6 @@ std::vector<Eigen::VectorXd> increments(double timestep,
         std::cout << "relative residuum for incerement " << i << " : " << rel_res << std::endl; 
 
         increments.push_back(increment);
-
-        bool debug = 0; 
-        if (debug){
-            std::string vtk_filename = std::string("vtk_files/time_dependent/debug_") + std::to_string(4*x + i) + std::string(".vtk");
-            lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
-
-            std::cout << "vtk file " << vtk_filename << std::endl; 
-            vtk_writer.setBinary(true);
-
-            auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-            const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-
-            auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-            for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
-                nodal_data->operator()(dofh.Entity(global_idx)) = increment[global_idx];
-            }
-            vtk_writer.WritePointData("increment", *nodal_data);
-
-            Eigen::VectorXd timestep_jacobian =   timestep * Jacobian * increments_sum;
-
-            nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-            for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
-                nodal_data->operator()(dofh.Entity(global_idx)) = timestep_jacobian[global_idx];
-            }
-            vtk_writer.WritePointData("jacobian-increment_sum", *nodal_data);
-
-            Eigen::VectorXd timestep_feval = timestep * function_evaluation(increment_solution, mesh_p, cell_tags, increment_time, max_current, ramp_up_time, x, i, timestep, 0) ;
-
-            nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-            for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
-                nodal_data->operator()(dofh.Entity(global_idx))= timestep_feval[global_idx];
-            }
-            vtk_writer.WritePointData("timestep_feval", *nodal_data);
-
-            Eigen::VectorXd time_derivative_timestep = gamma_i[i] * timestep * timestep * time_derivative;
-            nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-            for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
-                nodal_data->operator()(dofh.Entity(global_idx))= time_derivative_timestep[global_idx];
-            }
-            vtk_writer.WritePointData("timestep_derivative", *nodal_data);
-
-            nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-            for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
-                nodal_data->operator()(dofh.Entity(global_idx))= rhs[global_idx];
-            }
-            vtk_writer.WritePointData("rhs", *nodal_data);
-        }
 
     }
 

@@ -62,7 +62,6 @@ int main (int argc, char *argv[]){
 
     auto time_to_current_derivative = [max_current, ramp_up_time](double time){
         double rate = 1/ramp_up_time;
-        std::cout << "time derivative " << rate << std::endl;
         return time < ramp_up_time ? rate  * max_current : 0;
     };
 
@@ -128,7 +127,34 @@ int main (int argc, char *argv[]){
 
         Eigen::SparseMatrix<double> jacobian = -(A + N);
 
-        Eigen::VectorXd next_timestep = row_step(step_size, time, current_timestep, jacobian, M , time_derivative, mesh_p, cell_tag, max_current, ramp_up_time);
+        lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tags = cell_tag; 
+        std::shared_ptr<const lf::mesh::Mesh> mesh_ps = mesh_p; 
+
+        auto  function_evaluator = [&max_current, &ramp_up_time, &cell_tags, &mesh_ps, &step_size]( double time, Eigen::VectorXd current_timestep)
+                                    -> Eigen::VectorXd {
+
+
+            auto time_to_current = [max_current, ramp_up_time](double time){
+                double rate = 1/ramp_up_time;
+                return time < ramp_up_time ? rate * time * max_current : max_current;
+            };
+
+            std::map<int, double> tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
+            lf::mesh::utils::CodimMeshDataSet<double> cell_current = eddycurrent::getCellCurrent(mesh_ps, tag_to_current, cell_tags);
+
+            auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_ps);
+
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, current_timestep);
+            utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
+
+            Eigen::VectorXd rho =  eddycurrent::rho_assembler(mesh_ps, cell_tags, mf_curl);
+            Eigen::VectorXd load = eddycurrent::phi_assembler(mesh_ps, cell_current);
+
+            return load - rho; 
+
+        };
+
+        Eigen::VectorXd next_timestep = row_step(step_size, time, current_timestep, jacobian, M , time_derivative, function_evaluator);
 
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
 
