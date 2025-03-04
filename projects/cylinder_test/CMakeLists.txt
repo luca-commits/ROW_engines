@@ -32,6 +32,7 @@ add_executable(projects.cylinder_test.test_dof_mapping test_dof_mapping.cpp ${SO
 add_executable(projects.cylinder_test.test_permeability test_permeability.cpp )
 add_executable(projects.cylinder_test.test_M_matrix test_M_matrix.cpp ${SOURCES})
 add_executable(projects.cylinder_test.row_static solve_ROW_no_rotation_main.cc ${SOURCES})
+add_executable(projects.cylinder_test.test_ROW_timestepping test_ROW_timestepping.cpp ${SOURCES})
 
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC /usr/local/include/eigen3)
 target_include_directories(projects.cylinder_test.test_meshes PUBLIC src/main)
@@ -41,6 +42,8 @@ target_include_directories(projects.cylinder_test.solve_with_rotation PUBLIC /us
 target_include_directories(projects.cylinder_test.test_M_matrix PUBLIC /usr/local/include)
 target_include_directories(projects.cylinder_test.test_dof_mapping PUBLIC /usr/local/include)
 target_include_directories(projects.cylinder_test.row_static PUBLIC /usr/local/include)
+target_include_directories(projects.cylinder_test.test_ROW_timestepping PUBLIC /usr/local/include)
+
 
 target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
 target_link_libraries(projects.cylinder_test.test_meshes /usr/local/lib/libgmsh.dylib)
@@ -89,6 +92,23 @@ target_link_libraries(projects.cylinder_test.solve_non-linear
 )
 
 target_link_libraries(projects.cylinder_test.row_static
+  PUBLIC Boost::program_options Eigen3::Eigen
+  lf.assemble
+  lf.base
+  lf.geometry
+  lf.io
+  lf.mesh
+  lf.mesh.hybrid2d
+  lf.mesh.test_utils
+  lf.mesh.utils
+  lf.refinement
+  lf.uscalfe
+  BLAS::BLAS
+  /usr/local/lib/libgmsh.dylib
+  PRIVATE alglib
+)
+
+target_link_libraries(projects.cylinder_test.test_ROW_timestepping
   PUBLIC Boost::program_options Eigen3::Eigen
   lf.assemble
   lf.base
