@@ -88,6 +88,8 @@ std::vector<Eigen::VectorXd> increments(double timestep,
                               + timestep * Jacobian * increments_sum 
                               + timestep * timestep * gamma_i[i] *  time_derivative;
 
+
+
         Eigen::VectorXd increment = solver.solve(rhs); 
         double rel_res = 0.0;
         if (rhs.norm() != 0) {
@@ -96,7 +98,7 @@ std::vector<Eigen::VectorXd> increments(double timestep,
         } else {
             std::cout << " Solution vector is 0 " << std::endl;
         }
-        std::cout << "relative residuum for incerement " << i << " : " << rel_res << std::endl; 
+        // std::cout << "relative residuum for incerement " << i << " : " << rel_res << std::endl; 
 
         increments.push_back(increment);
 

@@ -18,7 +18,7 @@ Eigen::VectorXd row_step(double timestep,
                                                                       jacobian, M, time_derivative, f);
     Eigen::VectorXd next_timestep = current_timestep;
     for(unsigned i = 0; i < increments.size(); ++i){
-        std::cout << "increment i norm: " << i << " " << increments[i].norm() << std::endl; 
+        // std::cout << "increment i norm: " << i << " " << increments[i].norm() << std::endl; 
         next_timestep += b[i] * increments[i];
     }
     return next_timestep; 
