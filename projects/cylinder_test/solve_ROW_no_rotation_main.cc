@@ -10,60 +10,87 @@
 int main (int argc, char *argv[]){
 
 
-    double total_time;
-    double step_size;
-    std::string mesh_name; 
-    double max_current = 1000;
-    double conductivity_ring = 5.96e7;
-    double ramp_up_time = 0.01;
-     unsigned newton_steps;
-
     std::ifstream infile("xinput.txt");
-    if (infile.is_open()){
-        // Read total_time and timesteps
-        if (!(infile >> step_size)){
-            std::cerr << "Error reading time step size" << std::endl;
-        }
-        if (!(infile >> total_time)){  
-            std::cerr << "Error reading timesteps" << std::endl;
-        }
-        if (!(infile >> mesh_name)){
-            std::cerr << "Error reading mesh name " << std::endl;
-        }
-        if (!(infile >> max_current)){
-            std::cerr << "Error reading mesh name " << std::endl;
-        }
-        if (!(infile >> conductivity_ring)){
-            std::cerr << "Error reading mesh name " << std::endl;
-        }
-        if (!(infile >> ramp_up_time)){
-            std::cerr << "Error reading mesh name " << std::endl;
-        }
-        if (!(infile >> newton_steps)){
-            std::cerr << "Error reading newton steps " << std::endl;
-        }
-        infile.close();
-    }
-    else{
+    std::string line;
+    double step_size, total_time, max_current, conductivity_ring, exitation_current_parameter;
+    std::string mesh_name, exitation_current_type, timestepping_method;
+    
+    if (!infile.is_open()) {
         std::cerr << "Unable to open the file!" << std::endl;
+        return 1;
     }
 
-    std::cout << std::endl << "timestep: " << step_size << std::endl;
+    // Function to read next non-comment line
+    auto readNextValue = [&](auto& var) {
+        while (std::getline(infile, line)) {
+            if (!line.empty() && line[0] != '#') {
+                std::istringstream iss(line);
+                if (!(iss >> var)) {
+                    std::cerr << "Error reading value: " << line << std::endl;
+                    return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Read values in correct order
+    if (!readNextValue(step_size)) return 1;
+    if (!readNextValue(total_time)) return 1;
+    if (!readNextValue(mesh_name)) return 1;
+    if (!readNextValue(max_current)) return 1;
+    if (!readNextValue(conductivity_ring)) return 1;
+    if (!readNextValue(exitation_current_type)) return 1;
+    if (!readNextValue(exitation_current_parameter)) return 1;
+    if (!readNextValue(timestepping_method)) return 1;
+
+    infile.close();
+
+    // Print read values
+    std::cout << "Step Size: " << step_size << "\n";
+    std::cout << "Total Time: " << total_time << "\n";
+    std::cout << "Mesh Name: " << mesh_name << "\n";
+    std::cout << "Max Current: " << max_current << "\n";
+    std::cout << "Conductivity: " << conductivity_ring << "\n";
+    std::cout << "Excitation Type: " << exitation_current_type << "\n";
+    std::cout << "Excitation Parameter: " << exitation_current_parameter << "\n";
+    std::cout << "Timestepping Method: " << "rosenbrock wanner" << "\n";
+
+
+     std::string benchmark_filename = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string(".csv");
+
+    std::ofstream benchmark_file(benchmark_filename, std::ios::trunc);
+    benchmark_file << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file.close();
 
     std::filesystem::path here = __FILE__;
     std::string type_of_rotor = mesh_name;
     auto mesh_path = std::string(here.remove_filename()) + std::string("meshes/rotating/") + type_of_rotor + "/";
     std::cout << mesh_path << std::endl;
 
-    auto time_to_current = [max_current, ramp_up_time](double time){
-        double rate = 1/ramp_up_time;
-        return time < ramp_up_time ? rate * time * max_current : max_current;
+    auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double time){
+        if (exitation_current_type == "ramp_up"){
+            double rate = 1/exitation_current_parameter;
+            return time < exitation_current_parameter ? rate * time * max_current : max_current;
+        }
+        else{
+            const double PI = 3.141592653589793;
+            return max_current * std::sin(2 * PI * exitation_current_parameter * time);
+        }
     };
 
-    auto time_to_current_derivative = [max_current, ramp_up_time](double time){
-        double rate = 1/ramp_up_time;
-        return time < ramp_up_time ? rate  * max_current : 0;
+    auto time_to_current_derivative = [max_current, exitation_current_parameter, exitation_current_type](double time){
+        if (exitation_current_type == "ramp_up"){
+            double rate = 1/exitation_current_parameter;
+            return time < exitation_current_parameter ? rate  * max_current : 0;
+        }
+        else{
+            const double PI = 3.141592653589793;
+            return max_current * std::cos(2 * PI * exitation_current_parameter * time);
+        }
     };
+
 
 
     double rel_angle = 0;
@@ -130,13 +157,19 @@ int main (int argc, char *argv[]){
         lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tags = cell_tag; 
         std::shared_ptr<const lf::mesh::Mesh> mesh_ps = mesh_p; 
 
-        auto  function_evaluator = [&max_current, &ramp_up_time, &cell_tags, &mesh_ps, &step_size]( double time, Eigen::VectorXd current_timestep)
+        auto  function_evaluator = [&max_current, &exitation_current_parameter, &exitation_current_type, &cell_tags, &mesh_ps, &step_size]( double time, Eigen::VectorXd current_timestep)
                                     -> Eigen::VectorXd {
 
 
-            auto time_to_current = [max_current, ramp_up_time](double time){
-                double rate = 1/ramp_up_time;
-                return time < ramp_up_time ? rate * time * max_current : max_current;
+            auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double time){
+                if (exitation_current_type == "ramp_up"){
+                    double rate = 1/exitation_current_parameter;
+                    return time < exitation_current_parameter ? rate * time * max_current : max_current;
+                }
+                else{
+                    const double PI = 3.141592653589793;
+                    return max_current * std::sin(2 * PI * exitation_current_parameter * time);
+                }
             };
 
             std::map<int, double> tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
@@ -217,6 +250,23 @@ int main (int argc, char *argv[]){
             center_of_triangle << 0.5 , 0.5; 
             induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
         }
+
+
+        benchmark_file.open(benchmark_filename, std::ios::app);
+        // benchmark_file << ",";
+
+        // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
+        // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
+        // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
+        // simulations (when using same mesh)? 
+        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+            Eigen::Vector2d center_of_triangle;
+            center_of_triangle << 0.5 , 0.5;
+            benchmark_file << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+        }
+
+        benchmark_file << std::endl;
+        benchmark_file.close();
 
         vtk_writer.WriteCellData("induced-current", induced_current);
         std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
