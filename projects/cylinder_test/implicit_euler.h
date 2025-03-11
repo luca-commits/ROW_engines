@@ -9,6 +9,9 @@
 #include "BICG_stab.hpp"
 #include <Eigen/IterativeLinearSolvers>
 
+
+// this function is only used for linear materials, basically an euler step without 
+// 
 Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,  
                                     const Eigen::SparseMatrix<double>& M, 
                                     double timestep, 
@@ -18,14 +21,11 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
 
     // Eigen::SparseMatrix<double> lhs = timestep * (A) + M;
     Eigen::SparseMatrix<double> lhs = timestep * (A);
-    std::cout << "lhs.norm() " << lhs.norm() << std::endl;
 
-    std::cout << "M norm: " << M.norm() << std::endl;
-    std::cout << "A norm: " << A.norm() << std::endl;
 
     Eigen::VectorXd rhs = timestep * load_vector;// M * current_step +
 
-    std::cout << "rhs.norm() " << rhs.norm() << std::endl;
+
     lf::assemble::dim_t N_dofs = load_vector.size();
     Eigen::VectorXd next_timestep(N_dofs);
     next_timestep.setZero();
@@ -44,10 +44,8 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
     // solver.compute(lhs);
     // next_timestep = solver.solve(rhs);
 
-    std::cout << "next_timestep.norm() " << next_timestep.norm() << std::endl;
-
     double rel_res = 0.0;
-    if (rhs.norm() != 0) {
+    if (rhs.norm() > 1e-15) {
         rel_res = (lhs * next_timestep - rhs).norm() / rhs.norm();
         LF_ASSERT_MSG(rel_res < 1e-4, "Solver failed, residual is greater than 1e-7");
     } else {
@@ -76,10 +74,6 @@ Eigen::VectorXd newton_step(Eigen::SparseMatrix<double>& N,
     Eigen::SparseMatrix<double> preconditioner_matrix = (A * timestep + M_preconditioner + N * timestep);
     
 
-    std::cout << "A non zeros" << A.nonZeros() << std::endl;
-    std::cout << "M_preconditioner non zeros" << M_preconditioner.nonZeros() << std::endl;
-    std::cout << "lhs non zeros" << (preconditioner_matrix).nonZeros() << std::endl;
-
     Eigen::SparseLU<Eigen::SparseMatrix<double>> preconditioner;
     std::cout << "computing LU decomposition of preconditioner" << std::endl;
     preconditioner.compute(preconditioner_matrix);
@@ -102,9 +96,7 @@ Eigen::VectorXd newton_step(Eigen::SparseMatrix<double>& N,
 
     double rel_res = 0.0;
     rel_res = (lhs * next_newton_step - rhs).norm() / rhs.norm();
-    std::cout << "relative residuum direct solver: " << rel_res << std::endl;
-    std::cout << "lhs norm: " << (lhs * next_newton_step).norm() << std::endl;
-    std::cout << "rhs norm: " << rhs.norm() << std::endl;
+
 
     if (rhs.norm() != 0) { 
         
