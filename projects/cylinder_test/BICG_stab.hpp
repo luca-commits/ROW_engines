@@ -1,3 +1,6 @@
+#ifndef BIGSTAB_HPP
+#define BIGSTAB_HPP
+
 #include <iostream> 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -244,3 +247,5 @@ unsigned BiCGstab(Eigen::SparseMatrix<double>  Matrix, unsigned N,  Precondition
 	if (verbose) std::cout << "I return the solution with the best iterative residual =" << eps << std::endl;
 	return 1;
 }
+
+#endif
