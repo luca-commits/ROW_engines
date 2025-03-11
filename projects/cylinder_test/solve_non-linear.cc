@@ -60,7 +60,11 @@ residual_file.flush();
         std::cerr << "Unable to open the file!" << std::endl;
     }
 
-    std::cout << "newton_steps  " << newton_steps << std::endl;
+    std::ofstream benchmark_file(benchmark_filename, std::ios::trunc);
+    benchmark_file << "# method: " << timestepping_method << ", step size: " << step_size << std::endl; 
+    benchmark_file.close();
+
+    bool bdf2 = timestepping_method == "bdf_2";
 
     std::cout << std::endl << "timestep: " << step_size << std::endl;
 
@@ -102,6 +106,7 @@ residual_file.flush();
     LF_ASSERT_MSG((number_stable_dofs == numStableNodes), "Something went wrong, the number of stable dofs does not correspond to the number of stableNodes");
 
     Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
+    Eigen::VectorXd previous_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
     double angle_step = 2 * M_PI / 60;  //360 / 60 = 6 degrees per timestep
@@ -173,23 +178,30 @@ residual_file.flush();
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_current_newton_step);
             auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
 
-            next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step, current_timestep_extended, phi, M_preconditioner); //  current_newton_step
-
+            if (i == 1 || !bdf2 ) {
+                next_newton_step = current_newton_step - newton_step(N, A, M, step_size, current_newton_step,  current_timestep_extended, phi, M_preconditioner); //  current_newton_step
+            }
+            else next_newton_step = current_newton_step -           bdf2::newton_step(N, A, M, step_size, current_newton_step, previous_timestep_extended, current_timestep_extended, phi, M_preconditioner);
 
             lf::fe::MeshFunctionGradFE<double, double> mf_grad_next(fe_space, next_newton_step);
             utils::MeshFunctionCurl2DFE mf_curl_next(mf_grad_next);
 
             auto [A_next, M_next, phi_next] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_next);
 
-            Eigen::SparseMatrix<double> lhs = (step_size * A_next + M);
-            Eigen::VectorXd rhs =  M * current_timestep_extended + step_size * phi; //extended
-            newton_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
-            std::cout << "newton residual " << newton_residual << std::endl;
-                    residual_file << i << " " 
-                     << j << " " 
-                     << newton_residual << " "
-                     << time << " "
-                     << time_to_current(time) << "\n";
+
+            if (i == 1 || !bdf2 ){
+                Eigen::SparseMatrix<double> lhs = (step_size * A_next + M);
+                Eigen::VectorXd rhs =  M * current_timestep_extended + step_size * phi; //extended
+                newton_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
+                std::cout << "newton residual " << newton_residual << std::endl;
+ 
+            }
+            else{
+                Eigen::SparseMatrix<double> lhs = M + 2./3. * step_size * (A_next);
+                Eigen::VectorXd rhs =  + 4./3. * M * current_timestep_extended - 1./3. * M * previous_timestep_extended + 2./3. * step_size * phi;
+                newton_residual = (lhs * next_newton_step - rhs).norm() / rhs.norm(); 
+                std::cout << "newton residual " << newton_residual << std::endl;
+            }
 
             current_newton_step = next_newton_step; 
             std::cout << std::endl;
@@ -210,7 +222,7 @@ residual_file.flush();
         if (rhs.norm() > 1e-15) std::cout << "Final newton residual " << rel_residual << std::endl; 
 
 
-      lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
+        lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
         vtk_writer.setBinary(true);
         Eigen::VectorXd discrete_solution = next_timestep;
 
@@ -303,6 +315,8 @@ residual_file.flush();
 
         std::cout << "current_timestep.size() " << current_timestep.size() << std::endl;
         std::cout << "next_timestep.size() " << next_timestep.size() << std::endl;
+
+        previous_timestep = current_timestep_extended.head(number_stable_dofs);
         current_timestep = next_timestep.head(number_stable_dofs);
         std::cout << std::endl; 
     }
