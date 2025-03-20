@@ -45,7 +45,7 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
     // next_timestep = solver.solve(rhs);
 
     double rel_res = 0.0;
-    if (rhs.norm() > 1e-15) {
+    if (rhs.norm() > 1e-17) {
         rel_res = (lhs * next_timestep - rhs).norm() / rhs.norm();
         LF_ASSERT_MSG(rel_res < 1e-4, "Solver failed, residual is greater than 1e-7");
     } else {
@@ -83,16 +83,7 @@ Eigen::VectorXd newton_step(Eigen::SparseMatrix<double>& N,
     Eigen::VectorXd next_newton_step(N_dofs);
     next_newton_step.setZero();
 
-    BiCGstab(lhs, N_dofs, preconditioner, rhs, next_newton_step, 1e-7, 100, 1);
-    
-    // //use the Eigen BiCGSTAB solver with the preconditioner computed earlier: 
-    // Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::SparseLU<Eigen::SparseMatrix<double>>> solver;
-    // solver.preconditioner().compute(preconditioner_matrix);
-    // solver.setTolerance(1e-7);
-    // solver.setMaxIterations(100);
-    // solver.compute(lhs);
-    // Eigen::VectorXd next_newton_step = solver.solve(rhs);
-
+    BiCGstab(lhs, N_dofs, preconditioner, rhs, next_newton_step, 1e-7, 100, 1);  
 
     double rel_res = 0.0;
     rel_res = (lhs * next_newton_step - rhs).norm() / rhs.norm();

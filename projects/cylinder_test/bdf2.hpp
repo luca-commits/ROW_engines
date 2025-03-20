@@ -27,9 +27,6 @@ namespace bdf2{
         Eigen::SparseMatrix<double> lhs = M + 2./3. * timestep * (A + N); 
         Eigen::SparseMatrix<double> preconditioner_matrix =  M_preconditioner + 2./3. * timestep * (A + N); 
 
-        std::cout << "A non zeros" << A.nonZeros() << std::endl;
-        std::cout << "M_preconditioner non zeros" << M_preconditioner.nonZeros() << std::endl;
-        std::cout << "lhs non zeros" << (preconditioner_matrix).nonZeros() << std::endl;
 
         Eigen::SparseLU<Eigen::SparseMatrix<double>> preconditioner;
         std::cout << "computing LU decomposition of preconditioner" << std::endl;
@@ -56,5 +53,5 @@ namespace bdf2{
         return next_newton_step;
     }
 
-}
+}//namespace bdf2
 #endif //BDF2_HPP

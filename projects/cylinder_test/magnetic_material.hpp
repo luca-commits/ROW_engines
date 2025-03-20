@@ -51,7 +51,7 @@ class FerromagneticMaterial : public MagneticMaterial {
 public:
     FerromagneticMaterial() : 
     max_(5000),
-    c_(1),
+    c_(30), 
     mu0_(4 * M_PI * 1e-7) {}
 
     Eigen::Vector2d getH(const Eigen::Vector2d& B) const override {
@@ -64,6 +64,7 @@ public:
             getReluctivity(1e-12);
         }
         double relative_permeability = max_ / (1 + std::pow(B, 4) * max_ / c_) + 1;
+        // std::cout << "B " << B << " relative permeability: " << relative_permeability << std::endl;
         return (1 / relative_permeability) / mu0_;
     }
     
@@ -77,7 +78,7 @@ public:
     }
 
 private:
-    double max_ = 5000; 
+    double max_ = 1000; 
     double c_ = 100; 
     double mu0_ = 4 * M_PI * 1e-7;
 };
@@ -95,7 +96,11 @@ public:
             case 1: //air
                 return std::make_shared<LinearMaterial>(1/(1.)); 
             case 4: //airgap
-                return std::make_shared<LinearMaterial>(1/(1.));                              
+                return std::make_shared<LinearMaterial>(1/(1.));       
+            case 5: //primary coil inward current
+                return std::make_shared<LinearMaterial>(1/(1.)); 
+            case 6: //secondary coils
+                return std::make_shared<LinearMaterial>(1/(1.));                        
             default:
                 throw std::runtime_error("Unknown material tag: " + std::to_string(material_tag));
         }

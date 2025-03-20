@@ -73,7 +73,7 @@ unsigned BiCGstab(Eigen::SparseMatrix<double>  Matrix, unsigned N,  Precondition
 			}
 
 
-			if (b.norm() < 1.0e-15 && x.norm() < 1.0e-15)
+			if (b.norm() < 1.0e-17 && x.norm() < 1.0e-17)
 			{
 				eps = r.norm() / nrmb;
 				if (verbose) std::cout << (b.norm());
