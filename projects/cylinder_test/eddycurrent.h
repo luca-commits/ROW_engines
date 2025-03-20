@@ -112,19 +112,19 @@ private:
 
 
 
-class ElemVec_rho_Provider{
-  public:
-    ElemVec_rho_Provider(utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux,
-                  lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags) :
-                  cell_magnetic_flux_(cell_magnetic_flux),
-                  material_tags_(material_tags) {}
-    bool isActive(const lf::mesh::Entity& cell){return true;}; //maybe change it to only do computations if J != 0 
-    const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
-  private:
-    utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
-    std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
-    lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
-};
+// class ElemVec_rho_Provider{
+//   public:
+//     ElemVec_rho_Provider(utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux,
+//                   lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags) :
+//                   cell_magnetic_flux_(cell_magnetic_flux),
+//                   material_tags_(material_tags) {}
+//     bool isActive(const lf::mesh::Entity& cell){return true;}; //maybe change it to only do computations if J != 0 
+//     const Eigen::Matrix<double, 3, 1> Eval(const lf::mesh::Entity &cell);
+//   private:
+//     utils::MeshFunctionCurl2DFE<double, double> cell_magnetic_flux_;
+//     std::map<int, std::shared_ptr<MagneticMaterial>> materials_;
+//     lf::mesh::utils::CodimMeshDataSet<unsigned int> material_tags_;
+// };
 
 
 std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
@@ -153,24 +153,24 @@ std::tuple<Eigen::SparseMatrix<double>,
 
 
 
-   std::tuple<Eigen::SparseMatrix<double>, 
-                  Eigen::VectorXd> N_rho_assembler
-  (
-  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
-  utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
-  lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
-  );
+  //  std::tuple<Eigen::SparseMatrix<double>, 
+  //                 Eigen::VectorXd> N_rho_assembler
+  // (
+  // std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  // lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+  // utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
+  // lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
+  // );
 
 
 
-Eigen::VectorXd rho_assembler
-(
-  std::shared_ptr<const lf::mesh::Mesh> 
-  mesh_p,
-  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
-  utils::MeshFunctionCurl2DFE<double, double>  & cell_B
-);
+// Eigen::VectorXd rho_assembler
+// (
+//   std::shared_ptr<const lf::mesh::Mesh> 
+//   mesh_p,
+//   lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+//   utils::MeshFunctionCurl2DFE<double, double>  & cell_B
+// );
 
   Eigen::VectorXd phi_assembler
   ( 
@@ -185,6 +185,14 @@ Eigen::SparseMatrix<double>
   lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
   utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
   lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
+  );
+
+Eigen::SparseMatrix<double>
+  A_assembler
+  (
+  std::shared_ptr<const lf::mesh::Mesh> mesh_p,
+  lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
+  utils::MeshFunctionCurl2DFE<double, double>  & cell_B
   );
   
 
