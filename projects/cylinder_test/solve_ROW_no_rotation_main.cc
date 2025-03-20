@@ -13,7 +13,7 @@ int main (int argc, char *argv[]){
     std::ifstream infile("xinput.txt");
     std::string line;
     double step_size, total_time, max_current, conductivity_ring, exitation_current_parameter;
-    std::string mesh_name, exitation_current_type, timestepping_method;
+    std::string mesh_name, exitation_current_type, timestepping_method, geometry_type;
     
     if (!infile.is_open()) {
         std::cerr << "Unable to open the file!" << std::endl;
@@ -44,6 +44,8 @@ int main (int argc, char *argv[]){
     if (!readNextValue(exitation_current_type)) return 1;
     if (!readNextValue(exitation_current_parameter)) return 1;
     if (!readNextValue(timestepping_method)) return 1;
+    if (!readNextValue(geometry_type)) return 1; 
+    if (!readNextValue(timestepping_method)) return 1;
 
     infile.close();
 
@@ -57,6 +59,8 @@ int main (int argc, char *argv[]){
     std::cout << "Excitation Parameter: " << exitation_current_parameter << "\n";
     std::cout << "Timestepping Method: " << "rosenbrock wanner" << "\n";
 
+    std::cout << "Geometry type : " << geometry_type << std::endl; 
+
 
      std::string benchmark_filename = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string(".csv");
 
@@ -64,79 +68,137 @@ int main (int argc, char *argv[]){
     benchmark_file << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
     benchmark_file.close();
 
+    bool rotating_geometry = true;
+    if (geometry_type == "transformer") rotating_geometry = false; 
+    else rotating_geometry = true; 
+
+    std::cout << "rotating? : " << rotating_geometry << std::endl; 
+
     std::filesystem::path here = __FILE__;
     std::string type_of_rotor = mesh_name;
     auto mesh_path = std::string(here.remove_filename()) + std::string("meshes/rotating/") + type_of_rotor + "/";
     std::cout << mesh_path << std::endl;
 
-    auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double time){
+    auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double current_time){
         if (exitation_current_type == "ramp_up"){
             double rate = 1/exitation_current_parameter;
-            return time < exitation_current_parameter ? rate * time * max_current : max_current;
+            return current_time < exitation_current_parameter ? rate * current_time * max_current : max_current;
         }
         else{
             const double PI = 3.141592653589793;
-            return max_current * std::sin(2 * PI * exitation_current_parameter * time);
+            return  max_current * std::sin(2 * PI * exitation_current_parameter * current_time);
         }
     };
 
-    auto time_to_current_derivative = [max_current, exitation_current_parameter, exitation_current_type](double time){
+    auto time_to_current_derivative = [max_current, exitation_current_parameter, exitation_current_type](double current_time){
         if (exitation_current_type == "ramp_up"){
             double rate = 1/exitation_current_parameter;
-            return time < exitation_current_parameter ? rate  * max_current : 0;
+            return current_time < exitation_current_parameter ? rate  * max_current : 0;
         }
         else{
             const double PI = 3.141592653589793;
-            return max_current * std::cos(2 * PI * exitation_current_parameter * time);
+            std::cout << "derivative " << max_current  *  std::cos(2 * PI * exitation_current_parameter * current_time)    << std::endl;
+            return max_current  * std::cos(2 * PI * exitation_current_parameter * current_time);
         }
     };
-
-
 
     double rel_angle = 0;
-    remeshAirgap(mesh_path + "airgap.geo",  mesh_path + "airgap.msh",  M_PI * rel_angle);
-    rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", M_PI * rel_angle);
-    std::string final_mesh = mesh_path + "motor_" + std::to_string(0) + ".msh";
-    std::cout << "Mesh Path :" << final_mesh << std::endl;
-    unsigned numStableNodes = mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh); 
+    std::string final_mesh;
+    unsigned numStableNodes;
+    if(rotating_geometry){
+        remeshAirgap(mesh_path + "airgap.geo",  mesh_path + "airgap.msh",  M_PI * rel_angle);
+        rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", M_PI * rel_angle);
+        final_mesh = mesh_path + "motor_" + std::to_string(0) + ".msh";
+        numStableNodes = mergeEverything(mesh_path +  "rotor.msh", mesh_path + "stator.msh", mesh_path + "airgap.msh", final_mesh); 
+    }
+    else{
+        final_mesh = std::string(here.remove_filename()) + std::string("meshes/transformator/") + mesh_name + std::string(".msh");
+    }
+
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
     std::map<int, double>      tag_to_current_derivative{}; 
-    std::map<int, double> tag_to_conductivity{{1, 0}, {2, 0}, {3, conductivity_ring}, {4, 0}};
+    std::map<int, double> tag_to_conductivity;
+    std::map<int, double> tag_to_conductivity_precoditioner;
+    if (geometry_type == "transformer"){
+        tag_to_conductivity = {{6, conductivity_ring}, {2, 0}, {3, 0}, {4, 0}, {5, 0}};
+        tag_to_conductivity_precoditioner = {{6, conductivity_ring}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}, {5, 400*1e-5}};
+    }
+    else{
+        tag_to_conductivity = {{1, 0}, {2, 0}, {3, conductivity_ring}, {4, 0}};
+        tag_to_conductivity_precoditioner = {{1, 400*1e-5}, {2, 400*1e-5}, {3, conductivity_ring}, {4, 400*1e-5}};
+    }
 
     auto [mesh_p_temp, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
     auto fe_space_temp = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_temp);
+
+    lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p_temp, 0, -1};
+    // Fill preconditioner conductivity data using the original reader's physical entity numbers
+    for (const lf::mesh::Entity *cell : mesh_p_temp->Entities(0)) {
+        // Use the physical entity numbers from the original mesh reading
+        unsigned phys_nr = cell_tag(*cell);  // Since we stored this in cell_tag earlier
+        cell_conductivity_preconditioner(*cell) = tag_to_conductivity_precoditioner[phys_nr];
+    }
+            
 
     // Obtain local->global index mapping for current finite element space
     const lf::assemble::DofHandler &dofh_temp{fe_space_temp->LocGlobMap()};
     // Dimension of finite element space = number of nodes of the mesh
     const lf::base::size_type N_dofs(dofh_temp.NumDofs());
 
-    std::size_t number_stable_dofs = utils::computeDofsWithoutAirgap(mesh_p_temp, cell_tag, fe_space_temp);
 
-    std::cout << "number_stable_dofs " << number_stable_dofs << std::endl;
-    std::cout << "number_stable_nodes " << numStableNodes << std::endl;
-    LF_ASSERT_MSG((number_stable_dofs == numStableNodes), "Something went wrong, the number of stable dofs does not correspond to the number of stableNodes");
+    std::size_t number_stable_dofs;
+    if (rotating_geometry){
+        number_stable_dofs = utils::computeDofsWithoutAirgap(mesh_p_temp, cell_tag, fe_space_temp);
+        LF_ASSERT_MSG((number_stable_dofs == numStableNodes), "Something went wrong, the number of stable dofs does not correspond to the number of stableNodes");
+    }
+    else {
+        number_stable_dofs = N_dofs; 
+    }
 
     Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(N_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
     double angle_step = 0;  //360 / 60 = 6 degrees per timestep
-    double time = 0; 
+    double current_time = 0; 
 
-    for (unsigned i = 1; time <= total_time; ++i, time += step_size){
+    for (unsigned i = 0; current_time <= total_time; ++i, current_time += step_size){
+
+        const double PI = 3.141592653589793;
+        std::cout << "cosine " << std::cos(2 * PI * exitation_current_parameter * current_time) << std::endl;
+        
+
         double rel_angle = 0 ; // angle_step * i;
+        std::cout << "current_time : " << current_time << std::endl; 
         // std::cout << "angle : " << rel_angle << std::endl;
-        remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
-        rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
-        std::string final_mesh = mesh_path + "motor_" + std::to_string(i) + ".msh";
-        unsigned numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
-        std::cout << "timestep: " << i << std::endl;
-        std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(i) + std::string(".vtk");
-        double time = i * step_size; 
+               std::string final_mesh;
+        unsigned numStableNodes;
+        if(rotating_geometry){
+            remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
+            rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
+            final_mesh = mesh_path + "motor_" + std::to_string(i) + ".msh";
+            numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
+        }
+        else{
+            final_mesh = std::string(here.remove_filename()) + std::string("meshes/transformator/") + mesh_name + std::string(".msh");
+        }
 
-        tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
-        tag_to_current_derivative = {{1,0},  {2, time_to_current_derivative(time)}, {3, 0}, {4, 0}};
+        std::cout << "current_timestep: " << i << std::endl;
+        std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(i + 1) + std::string(".vtk");
+        double current_time = i * step_size; 
+
+        if (geometry_type == "transformer"){
+            std::cout << "current_time : " << current_time << std::endl;
+            std::cout << "current_time to current : " << time_to_current(current_time) << std::endl; 
+            std::cout << "current_time to current derivative : " << time_to_current_derivative(current_time) << std::endl; 
+            tag_to_current = {{6,0},  {2, time_to_current(current_time)}, {3, 0}, {4, 0}, {5, -time_to_current(current_time)}};
+            tag_to_current_derivative = {{6,0},  {2, time_to_current_derivative(current_time)}, {3, 0}, {4, 0}, {5, -time_to_current_derivative(current_time)}};
+        }
+        else{
+            tag_to_current = {{1,0},  {2, time_to_current(current_time)}, {3, 0}, {4, 0}}; 
+            tag_to_current_derivative = {{1,0},  {2, time_to_current_derivative(current_time)}, {3, 0}, {4, 0}};
+        }
+        
 
         auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
@@ -145,8 +207,21 @@ int main (int argc, char *argv[]){
       
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
+
+        lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
+        // Fill preconditioner conductivity data using the original reader's physical entity numbers
+        for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
+            // Use the physical entity numbers from the original mesh reading
+            unsigned phys_nr = cell_tag(*cell);  // Since we stored this in cell_tag earlier
+            cell_conductivity_preconditioner(*cell) = tag_to_conductivity_precoditioner[phys_nr];
+        }
+
         
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
+        auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
+
+        // std::cout << "A norm : " << A.norm() << std::endl ; 
+
 
         lf::mesh::utils::CodimMeshDataSet<double> cell_current_derivative = eddycurrent::getCellCurrent(mesh_p, tag_to_current_derivative, cell_tag);
         Eigen::VectorXd time_derivative = eddycurrent::phi_assembler(mesh_p, cell_current_derivative);        
@@ -157,7 +232,8 @@ int main (int argc, char *argv[]){
         lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tags = cell_tag; 
         std::shared_ptr<const lf::mesh::Mesh> mesh_ps = mesh_p; 
 
-        auto  function_evaluator = [&max_current, &exitation_current_parameter, &exitation_current_type, &cell_tags, &mesh_ps, &step_size]( double time, Eigen::VectorXd current_timestep)
+        auto  function_evaluator = [&max_current, &exitation_current_parameter, &exitation_current_type, 
+                                    &cell_tags, &mesh_ps, &step_size, &geometry_type, &tag_to_current]( double time, Eigen::VectorXd current_timestep,int i) //i is for debugging purposes only
                                     -> Eigen::VectorXd {
 
 
@@ -169,10 +245,16 @@ int main (int argc, char *argv[]){
                 else{
                     const double PI = 3.141592653589793;
                     return max_current * std::sin(2 * PI * exitation_current_parameter * time);
+                    std::cout << "sine " << std::sin(2 * PI * exitation_current_parameter * time) << std::endl;
                 }
             };
 
-            std::map<int, double> tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
+            if (geometry_type == "transformer"){
+                tag_to_current = {{6,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}, {5, -time_to_current(time)}};
+            }
+            else{
+                tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
+            }
             lf::mesh::utils::CodimMeshDataSet<double> cell_current = eddycurrent::getCellCurrent(mesh_ps, tag_to_current, cell_tags);
 
             auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_ps);
@@ -180,15 +262,37 @@ int main (int argc, char *argv[]){
             lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, current_timestep);
             utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
 
-            Eigen::VectorXd rho =  eddycurrent::rho_assembler(mesh_ps, cell_tags, mf_curl);
+            Eigen::SparseMatrix<double> A = eddycurrent::A_assembler(mesh_ps, cell_tags, mf_curl); 
+            Eigen::VectorXd rho = A * current_timestep; 
             Eigen::VectorXd load = eddycurrent::phi_assembler(mesh_ps, cell_current);
+
+            if (bool debug = 1){
+                std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load_") + std::to_string(i) + std::string(".vtk");
+                lf::io::VtkWriter vtk_writer(mesh_ps, vtk_filename);
+
+                vtk_writer.setBinary(true);
+
+                auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_ps);
+                const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+
+                auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_ps, 2);
+                for (int global_idx = 0; global_idx < rho.rows(); global_idx++) {
+                    nodal_data->operator()(dofh.Entity(global_idx)) = step_size * load[global_idx];
+                }
+                vtk_writer.WritePointData("load", *nodal_data);
+
+                nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_ps, 2);
+                for (int global_idx = 0; global_idx < rho.rows(); global_idx++) {
+                    nodal_data->operator()(dofh.Entity(global_idx)) = step_size *  rho[global_idx];
+                }
+                vtk_writer.WritePointData("rho", *nodal_data);
+            }
 
             return load - rho; 
 
         };
 
-        Eigen::VectorXd next_timestep = row_step(step_size, time, current_timestep, jacobian, M , time_derivative, function_evaluator);
-
+        Eigen::VectorXd next_timestep = row_step(step_size, current_time, current_timestep, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
 
         vtk_writer.setBinary(true);
@@ -276,6 +380,7 @@ int main (int argc, char *argv[]){
         vtk_writer.WriteCellData("Prescribed_Current", cell_current);
         vtk_writer.WriteCellData("Relative_Permeability", relative_permeability);
         vtk_writer.WriteCellData("H_field", H);
+
 
         current_timestep = next_timestep; 
     }
