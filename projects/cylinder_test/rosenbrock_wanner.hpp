@@ -4,7 +4,7 @@
 #include <Eigen/Dense> 
 #include "increments_no_rotations.hpp"
 
-Eigen::VectorXd row_step(double timestep, 
+std::tuple<Eigen::VectorXd, Eigen::VectorXd>  row_step(double timestep, 
                         double t_0, 
                         Eigen::VectorXd current_timestep, 
                         Eigen::SparseMatrix<double> jacobian,
@@ -27,7 +27,7 @@ Eigen::VectorXd row_step(double timestep,
         next_timestep_high += b[i] * increments[i];
         next_timestep_low += b_hat[i] * increments[i]; 
     }
-    return next_timestep_high; 
+    return {next_timestep_high, next_timestep_low}; 
     //return {next_timestep_high, next_timestep_low}; 
 }
 

@@ -17,7 +17,8 @@ int main (int argc, char *argv[]){
     // when benchmark_creation is 1, the timestep size will be set to 1/10 of the origial size, 
     // and only 1/10 of the visualizations/benchmark files will be saved, so that they can be compared
     // with the original method
-    bool benchmark_mode; 
+    bool benchmark_mode, adaptive; 
+
     double benchmark_original_ratio = 100; 
     
     if (!infile.is_open()) {
@@ -51,6 +52,7 @@ int main (int argc, char *argv[]){
     if (!readNextValue(timestepping_method)) return 1;
     if (!readNextValue(geometry_type)) return 1; 
     if (!readNextValue(benchmark_mode)) return 1;
+    if (!readNextValue(adaptive)) return 1;
 
     infile.close();
 
@@ -229,7 +231,7 @@ int main (int argc, char *argv[]){
             
         Eigen::VectorXd next_newton_step;
         Eigen::VectorXd current_newton_step = current_timestep_extended; //extended          
-        double newton_tolerance = 1e-3; 
+        double newton_tolerance = 1e-6; 
 
 
         for (unsigned j = 1; newton_residual >  newton_tolerance; ++j){ //j < newton_steps

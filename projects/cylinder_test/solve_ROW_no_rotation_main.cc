@@ -12,8 +12,9 @@ int main (int argc, char *argv[]){
 
     std::ifstream infile("xinput.txt");
     std::string line;
-    double step_size, total_time, max_current, conductivity_ring, exitation_current_parameter;
+    double step_size, total_time, max_current, conductivity_ring, exitation_current_parameter, adaptive_rel_tol = 1e-1, adaptive_abs_tol = 0.02, strict_ratio = 5.;
     std::string mesh_name, exitation_current_type, timestepping_method, geometry_type;
+    bool adaptive; 
     
     if (!infile.is_open()) {
         std::cerr << "Unable to open the file!" << std::endl;
@@ -46,6 +47,7 @@ int main (int argc, char *argv[]){
     if (!readNextValue(timestepping_method)) return 1;
     if (!readNextValue(geometry_type)) return 1; 
     if (!readNextValue(timestepping_method)) return 1;
+    if (!readNextValue(adaptive)) return 1;
 
     infile.close();
 
@@ -58,8 +60,10 @@ int main (int argc, char *argv[]){
     std::cout << "Excitation Type: " << exitation_current_type << "\n";
     std::cout << "Excitation Parameter: " << exitation_current_parameter << "\n";
     std::cout << "Timestepping Method: " << "rosenbrock wanner" << "\n";
+    std::cout << "Adaptive:  " << adaptive << "\n"; 
 
     std::cout << "Geometry type : " << geometry_type << std::endl; 
+    double original_step_size = step_size;
 
 
      std::string benchmark_filename = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string(".csv");
@@ -97,7 +101,6 @@ int main (int argc, char *argv[]){
         }
         else{
             const double PI = 3.141592653589793;
-            std::cout << "derivative " << max_current  *  std::cos(2 * PI * exitation_current_parameter * current_time)    << std::endl;
             return max_current  * std::cos(2 * PI * exitation_current_parameter * current_time);
         }
     };
@@ -161,15 +164,12 @@ int main (int argc, char *argv[]){
 
     double angle_step = 0;  //360 / 60 = 6 degrees per timestep
     double current_time = 0; 
-
-    for (unsigned i = 0; current_time <= total_time; ++i, current_time += step_size){
+    unsigned i; 
+    for (; current_time <= total_time;){
 
         const double PI = 3.141592653589793;
-        std::cout << "cosine " << std::cos(2 * PI * exitation_current_parameter * current_time) << std::endl;
-        
-
         double rel_angle = 0 ; // angle_step * i;
-        std::cout << "current_time : " << current_time << std::endl; 
+         
         // std::cout << "angle : " << rel_angle << std::endl;
                std::string final_mesh;
         unsigned numStableNodes;
@@ -183,14 +183,7 @@ int main (int argc, char *argv[]){
             final_mesh = std::string(here.remove_filename()) + std::string("meshes/transformator/") + mesh_name + std::string(".msh");
         }
 
-        std::cout << "current_timestep: " << i << std::endl;
-        std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(i + 1) + std::string(".vtk");
-        double current_time = i * step_size; 
-
         if (geometry_type == "transformer"){
-            std::cout << "current_time : " << current_time << std::endl;
-            std::cout << "current_time to current : " << time_to_current(current_time) << std::endl; 
-            std::cout << "current_time to current derivative : " << time_to_current_derivative(current_time) << std::endl; 
             tag_to_current = {{6,0},  {2, time_to_current(current_time)}, {3, 0}, {4, 0}, {5, -time_to_current(current_time)}};
             tag_to_current_derivative = {{6,0},  {2, time_to_current_derivative(current_time)}, {3, 0}, {4, 0}, {5, -time_to_current_derivative(current_time)}};
         }
@@ -292,97 +285,137 @@ int main (int argc, char *argv[]){
 
         };
 
-        Eigen::VectorXd next_timestep = row_step(step_size, current_time, current_timestep, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
-        lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
-
-        vtk_writer.setBinary(true);
-        Eigen::VectorXd discrete_solution = next_timestep;
-
-        lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
-        utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
-
-        auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-        for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
-            nodal_data->operator()(dofh.Entity(global_idx)) = discrete_solution[global_idx];
+        auto [next_timestep_high, next_timestep_low] = row_step(step_size, current_time, current_timestep, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
+  
+        double high_low_diff = (next_timestep_high - next_timestep_low).norm(); 
+        bool accept = 0; 
+        bool strongly_accept = 0; 
+        if (high_low_diff < std::max(adaptive_rel_tol * current_timestep.norm(), adaptive_abs_tol)) accept = true; 
+        if (high_low_diff < std::max((adaptive_rel_tol / strict_ratio) * current_timestep.norm(), adaptive_abs_tol / strict_ratio)) strongly_accept = true; 
+        if (accept){
+            current_time += step_size;
+            std::cout << "step accepted" << std::endl; 
         }
-        vtk_writer.WritePointData("A*", *nodal_data);
+        std::cout << "current_time : " << current_time << std::endl;
+        std::cout << "std::fmod(current_time, original_step_size)  " << std::fmod(current_time, original_step_size)   << std::endl; 
 
-        auto node_conductivity = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
-        for (const lf ::mesh::Entity *cell : mesh_p -> Entities(0)){
-            if(cell_conductivity(*cell) != 0){
-                std::span<const lf::mesh::Entity *const> sub_ent_range = cell -> SubEntities(2);
-                for (const lf::mesh::Entity *sub_ent : sub_ent_range) {
-                    node_conductivity->operator()(*sub_ent) = cell_conductivity(*cell);
+        //I only want to write out the visualization when the time corresponds to a regular interval such that I can compare results
+        //with newton-iteration based methods
+        if ((std::fmod(current_time, original_step_size) < 1e-12 && accept == true) || !adaptive){
+            unsigned i = int(current_time / original_step_size);
+            std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(i) + std::string(".vtk");
+            std::cout << "Writing visulasation file to"<< vtk_filename << std::endl; 
+            lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
+
+            vtk_writer.setBinary(true);
+            Eigen::VectorXd discrete_solution = next_timestep_high;
+
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, discrete_solution);
+            utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
+
+            auto nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
+            for (int global_idx = 0; global_idx < discrete_solution.rows(); global_idx++) {
+                nodal_data->operator()(dofh.Entity(global_idx)) = discrete_solution[global_idx];
+            }
+            vtk_writer.WritePointData("A*", *nodal_data);
+
+            auto node_conductivity = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
+            for (const lf ::mesh::Entity *cell : mesh_p -> Entities(0)){
+                if(cell_conductivity(*cell) != 0){
+                    std::span<const lf::mesh::Entity *const> sub_ent_range = cell -> SubEntities(2);
+                    for (const lf::mesh::Entity *sub_ent : sub_ent_range) {
+                        node_conductivity->operator()(*sub_ent) = cell_conductivity(*cell);
+                    }
                 }
             }
+            
+            Eigen::VectorXd backwards_difference = (next_timestep_high - current_timestep) / step_size;
+
+            lf::mesh::utils::CodimMeshDataSet<double> relative_permeability{mesh_p, 0, -1};
+            for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+                int material_tag = cell_tag(*cell); 
+                auto material = MaterialFactory::Create(material_tag); 
+
+                Eigen::Vector2d center_of_triangle;
+                center_of_triangle << 0.5 , 0.5; 
+                auto magnetic_flux = mf_curl(*cell, center_of_triangle);
+                Eigen::VectorXd B_field = magnetic_flux[0];
+                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+                relative_permeability(*cell) = (1 / reluctivity) / 1.256e-6;
+            }
+
+            Eigen::Vector2d init_value = Eigen::Vector2d::Zero();
+            lf::mesh::utils::CodimMeshDataSet<Eigen::Vector2d> H{mesh_p, 0, init_value};
+
+            for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+                int material_tag = cell_tag(*cell); 
+                auto material = MaterialFactory::Create(material_tag); 
+                Eigen::Vector2d center_of_triangle;
+                center_of_triangle << 0.5 , 0.5; 
+                auto magnetic_flux = mf_curl(*cell, center_of_triangle);
+                Eigen::VectorXd B_field = magnetic_flux[0];
+                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+                H(*cell) = B_field * reluctivity; 
+            }
+
+            lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
+            lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
+
+            for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+                Eigen::Vector2d center_of_triangle;
+                center_of_triangle << 0.5 , 0.5; 
+                induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
+            }
+
+
+            benchmark_file.open(benchmark_filename, std::ios::app);
+            // benchmark_file << ",";
+
+            // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
+            // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
+            // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
+            // simulations (when using same mesh)? 
+            for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+                Eigen::Vector2d center_of_triangle;
+                center_of_triangle << 0.5 , 0.5;
+                benchmark_file << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+            }
+
+            benchmark_file << std::endl;
+            benchmark_file.close();
+
+            vtk_writer.WriteCellData("induced-current", induced_current);
+            std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
+
+            vtk_writer.WriteCellData("B", mf_curl);
+            vtk_writer.WriteCellData("Conductivity", cell_conductivity);
+            vtk_writer.WriteCellData("Prescribed_Current", cell_current);
+            vtk_writer.WriteCellData("Relative_Permeability", relative_permeability);
+            vtk_writer.WriteCellData("H_field", H);
         }
+
         
-        Eigen::VectorXd backwards_difference = (next_timestep - current_timestep) / step_size;
-
-        lf::mesh::utils::CodimMeshDataSet<double> relative_permeability{mesh_p, 0, -1};
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
-            int material_tag = cell_tag(*cell); 
-            auto material = MaterialFactory::Create(material_tag); 
-
-            Eigen::Vector2d center_of_triangle;
-             center_of_triangle << 0.5 , 0.5; 
-            auto magnetic_flux = mf_curl(*cell, center_of_triangle);
-            Eigen::VectorXd B_field = magnetic_flux[0];
-            double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
-            relative_permeability(*cell) = (1 / reluctivity) / 1.256e-6;
+        std::cout << "high_low_diff: " << high_low_diff << std::endl; 
+        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep.norm() << std::endl; 
+        if (adaptive){
+            if (strongly_accept && step_size < original_step_size && std::fmod(current_time, 2 * step_size) < 1e-12){
+                step_size *= 2;
+                current_timestep = next_timestep_high; 
+                std::cout << "step strongly accepted " << std::endl; 
+            }
+            else if (accept){
+                current_timestep = next_timestep_high;  
+            }
+            else{
+                std::cout << "step rejected " << std::endl;
+                step_size /= 2; 
+                std::cout << "step size reduced to " << step_size << std::endl; 
+            }
         }
-
-        Eigen::Vector2d init_value = Eigen::Vector2d::Zero();
-        lf::mesh::utils::CodimMeshDataSet<Eigen::Vector2d> H{mesh_p, 0, init_value};
-
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
-            int material_tag = cell_tag(*cell); 
-            auto material = MaterialFactory::Create(material_tag); 
-            Eigen::Vector2d center_of_triangle;
-             center_of_triangle << 0.5 , 0.5; 
-            auto magnetic_flux = mf_curl(*cell, center_of_triangle);
-            Eigen::VectorXd B_field = magnetic_flux[0];
-            double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
-            H(*cell) = B_field * reluctivity; 
+        else{
+            current_timestep = next_timestep_high; 
+            current_time += step_size; 
         }
-
-        lf::fe::MeshFunctionFE<double, double> mf_backwards_difference(fe_space, backwards_difference); 
-        lf::mesh::utils::CodimMeshDataSet<double> induced_current{mesh_p, 0, -1};
-
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
-            Eigen::Vector2d center_of_triangle;
-            center_of_triangle << 0.5 , 0.5; 
-            induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
-        }
-
-
-        benchmark_file.open(benchmark_filename, std::ios::app);
-        // benchmark_file << ",";
-
-        // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
-        // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
-        // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
-        // simulations (when using same mesh)? 
-        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
-            Eigen::Vector2d center_of_triangle;
-            center_of_triangle << 0.5 , 0.5;
-            benchmark_file << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
-        }
-
-        benchmark_file << std::endl;
-        benchmark_file.close();
-
-        vtk_writer.WriteCellData("induced-current", induced_current);
-        std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
-
-        vtk_writer.WriteCellData("B", mf_curl);
-        vtk_writer.WriteCellData("Conductivity", cell_conductivity);
-        vtk_writer.WriteCellData("Prescribed_Current", cell_current);
-        vtk_writer.WriteCellData("Relative_Permeability", relative_permeability);
-        vtk_writer.WriteCellData("H_field", H);
-
-
-        current_timestep = next_timestep; 
     }
     return 0; 
 }
