@@ -19,7 +19,7 @@ template <typename Preconditioner>
 unsigned BiCGstab(Eigen::SparseMatrix<double>  Matrix, unsigned N,  Preconditioner& precond, const Eigen::VectorXd& b, Eigen::VectorXd & x, double eps, unsigned nsteps, unsigned min_no_steps)
 {
 	double D_PREC = 1e-16;
-	bool verbose = 1;
+	bool verbose = 0;
 	double bestRes = 1.0e100;
 	double EuklidRes = 1.0e100;
 	double bestEuklidRes = 1.0e100;

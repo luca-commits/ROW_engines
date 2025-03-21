@@ -38,7 +38,6 @@ std::vector<Eigen::VectorXd> increments(
       temp += gamma[i - 1][j];
     }
     gamma_i.push_back(temp);
-    std::cout << "gamma_i : " << temp << std::endl; 
   }
 
   Eigen::SparseMatrix<double> lhs = -timestep * gamma_ii * Jacobian + M;//M - timestep * gamma_ii * Jacobian;
@@ -58,8 +57,6 @@ std::vector<Eigen::VectorXd> increments(
       increment_time += timestep * alpha[i - 1][j];
       increment_solution += increments[j] * alpha[i - 1][j];
     }
-
-    std::cout << "incremetn solution : " << increment_solution.norm() << std::endl; 
 
     Eigen::VectorXd rhs = timestep *  f(increment_time, increment_solution, i) +
                           timestep * Jacobian * increments_sum +
@@ -82,7 +79,7 @@ std::vector<Eigen::VectorXd> increments(
 
     increments.push_back(increment);
 
-    bool debug = 1; 
+    bool debug = 0; 
     if (debug){
         std::string vtk_filename = std::string("vtk_files/time_dependent/debug_") + std::to_string(4*x + i) + std::string(".vtk");
         lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
@@ -107,9 +104,6 @@ std::vector<Eigen::VectorXd> increments(
         }
         vtk_writer.WritePointData("jacobian-increment_sum", *nodal_data);
 
-
-        std::cout << "timestep squared: " << timestep * timestep << std::endl; 
-        std::cout << "time derivative: " << time_derivative.norm() << std::endl; 
         Eigen::VectorXd time_derivative_timestep = gamma_i[i]  * timestep * timestep * time_derivative;
         nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
@@ -123,7 +117,6 @@ std::vector<Eigen::VectorXd> increments(
         }
         vtk_writer.WritePointData("rhs", *nodal_data);
 
-        std::cout << "feval norm: " << f(increment_time, increment_solution, i).norm() << std::endl; 
         Eigen::VectorXd feval = timestep * f(increment_time, increment_solution, i);
         nodal_data = lf::mesh::utils::make_CodimMeshDataSet<double>(mesh_p, 2);
         for (int global_idx = 0; global_idx < increment.rows(); global_idx++) {
