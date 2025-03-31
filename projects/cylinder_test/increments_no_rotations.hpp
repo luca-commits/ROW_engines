@@ -74,8 +74,8 @@ std::vector<Eigen::VectorXd> increments(
     } else {
       std::cout << " Solution vector is 0 " << std::endl;
     }
-    std::cout << "relative residuum for incerement " << i << " : " << rel_res
-              << std::endl;
+    // std::cout << "relative residuum for incerement " << i << " : " << rel_res
+    //           << std::endl;
 
     increments.push_back(increment);
 

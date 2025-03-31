@@ -186,15 +186,9 @@ int main (int argc, char *argv[]){
         // std::cout << "angle : " << rel_angle << std::endl;
         std::string final_mesh;
         unsigned numStableNodes;
-        if(rotating_geometry){
-            remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
-            rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
-            final_mesh = mesh_path + "motor_" + std::to_string(i) + ".msh";
-            numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor.msh", mesh_path + "airgap.msh",final_mesh);
-        }
-        else{
-            final_mesh = std::string(here.remove_filename()) + std::string("meshes/transformator/") + mesh_name + std::string(".msh");
-        }
+
+
+        final_mesh = std::string(here.remove_filename()) + std::string("meshes/transformator/") + mesh_name + std::string(".msh");
 
         if (geometry_type == "transformer"){
             tag_to_current = {{6,0},  {2, time_to_current(current_time)}, {3, 0}, {4, 0}, {5, -time_to_current(current_time)}};
@@ -250,8 +244,8 @@ int main (int argc, char *argv[]){
                 }
                 else{
                     const double PI = 3.141592653589793;
+                    // std::cout << "current : " << max_current * std::sin(2 * PI * exitation_current_parameter * time) << std::endl; 
                     return max_current * std::sin(2 * PI * exitation_current_parameter * time);
-                    std::cout << "sine " << std::sin(2 * PI * exitation_current_parameter * time) << std::endl;
                 }
             };
 
@@ -272,7 +266,7 @@ int main (int argc, char *argv[]){
             Eigen::VectorXd rho = A * current_timestep; 
             Eigen::VectorXd load = eddycurrent::phi_assembler(mesh_ps, cell_current);
 
-            if (bool debug = 1){
+            if (bool debug = 0){
                 std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load_") + std::to_string(i) + std::string(".vtk");
                 lf::io::VtkWriter vtk_writer(mesh_ps, vtk_filename);
 
@@ -441,7 +435,7 @@ int main (int argc, char *argv[]){
             }
             
             Eigen::VectorXd backwards_difference = (next_timestep_high - current_timestep) / step_size;
-
+            
             lf::mesh::utils::CodimMeshDataSet<double> relative_permeability{mesh_p, 0, -1};
             for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
                 int material_tag = cell_tag(*cell); 
@@ -451,7 +445,7 @@ int main (int argc, char *argv[]){
                 center_of_triangle << 0.5 , 0.5; 
                 auto magnetic_flux = mf_curl(*cell, center_of_triangle);
                 Eigen::VectorXd B_field = magnetic_flux[0];
-                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+                double reluctivity = material->getReluctivity(B_field.norm());
                 relative_permeability(*cell) = (1 / reluctivity) / 1.256e-6;
             }
 
@@ -465,7 +459,7 @@ int main (int argc, char *argv[]){
                 center_of_triangle << 0.5 , 0.5; 
                 auto magnetic_flux = mf_curl(*cell, center_of_triangle);
                 Eigen::VectorXd B_field = magnetic_flux[0];
-                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+                double reluctivity = material->getReluctivity(B_field.norm());
                 H(*cell) = B_field * reluctivity; 
             }
 
@@ -483,10 +477,6 @@ int main (int argc, char *argv[]){
             benchmark_file_B_field.open(benchmark_filename_B_field, std::ios::app);
             benchmark_file_B_power.open(benchmark_filename_B_power, std::ios::app);
 
-            // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
-            // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
-            // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
-            // simulations (when using same mesh)? 
             for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
 
                 int material_tag = cell_tag(*cell); 
@@ -529,13 +519,13 @@ int main (int argc, char *argv[]){
             vtk_writer.WriteCellData("H_field", H);
         }
 
-        
         std::cout << "high_low_diff: " << high_low_diff << std::endl; 
-        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep.norm() << std::endl; 
+        std::cout << "relative tolerance: " << (adaptive_rel_tol) * power_norm_previous << std::endl; 
         if (adaptive){
-            if (strongly_accept && step_size < original_step_size && std::fmod(current_time, 2 * step_size) < 1e-12){
-                step_size *= 2;
+            if (strongly_accept && step_size < original_step_size){
+                step_size *= 1.1;
                 current_timestep = next_timestep_high; 
+                power_norm_previous = std::abs(power_high); 
                 std::cout << "step strongly accepted " << std::endl; 
             }
             else if (accept){

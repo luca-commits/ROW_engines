@@ -9,13 +9,13 @@
 
 void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, double angle) {
     gmsh::initialize();
-     gmsh::option::setNumber("General.Terminal", 0);
+    gmsh::option::setNumber("General.Terminal", 0);
 
     gmsh::open(airgap_geo_file);
 
     
     gmsh::model::geo::rotate({{0, 139}, {0, 140}, {0, 141}, {0, 142}}, 
-                              0,
+                              0,    
                               0,
                               0,
                               0,
@@ -23,7 +23,6 @@ void remeshAirgap(std::string airgap_geo_file,  const std::string& output_file, 
                               1,
                               angle);
 
-    // gmsh::fltk::run();
 
     gmsh::model::mesh::generate(2);
 
@@ -53,6 +52,7 @@ unsigned mergeEverything(const std::string& input_file_stator,
 
     try {
 
+
         gmsh::option::setNumber("Geometry.Tolerance", 1e-8);
         gmsh::option::setNumber("Geometry.MatchMeshTolerance", 1e-8);
         
@@ -64,14 +64,17 @@ unsigned mergeEverything(const std::string& input_file_stator,
         gmsh::model::mesh::removeDuplicateNodes();
         gmsh::model::mesh::removeDuplicateElements();
 
+
         gmsh::merge(input_file_stator);
         gmsh::model::geo::synchronize();
         gmsh::model::mesh::removeDuplicateNodes();
         gmsh::model::mesh::removeDuplicateElements();
 
+
         std::vector<std::size_t> nodeTags;
         std::vector<double> nodeCoords, nodeParams;
         gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+
 
         // Number of nodes is the size of nodeTags
         numStableDof = nodeTags.size();
@@ -81,10 +84,13 @@ unsigned mergeEverything(const std::string& input_file_stator,
         gmsh::model::mesh::removeDuplicateNodes();
         gmsh::model::mesh::removeDuplicateElements();
 
+
         
         // gmsh::fltk::run();
+
         
         gmsh::write(output_file);
+        gmsh::finalize(); 
         
     } catch (const std::runtime_error& e) {
         gmsh::logger::write("Error during merge operation: " + std::string(e.what()));
