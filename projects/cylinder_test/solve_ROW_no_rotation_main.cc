@@ -66,11 +66,22 @@ int main (int argc, char *argv[]){
     double original_step_size = step_size;
 
 
-     std::string benchmark_filename = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string(".csv");
+    std::string benchmark_filename_current = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_current.csv");
+    std::string benchmark_filename_B_field = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_field.csv");
+    std::string benchmark_filename_B_power = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_power.csv");
 
-    std::ofstream benchmark_file(benchmark_filename, std::ios::trunc);
-    benchmark_file << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
-    benchmark_file.close();
+    std::ofstream benchmark_file_current(benchmark_filename_current, std::ios::trunc);
+    benchmark_file_current << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_current.close();
+    
+    std::ofstream benchmark_file_B_field(benchmark_filename_B_field, std::ios::trunc);
+    benchmark_file_B_field << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_B_field.close();
+
+    std::ofstream benchmark_file_B_power(benchmark_filename_B_power, std::ios::trunc);
+    benchmark_file_B_power << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_B_power.close();
+
 
     bool rotating_geometry = true;
     if (geometry_type == "transformer") rotating_geometry = false; 
@@ -368,21 +379,45 @@ int main (int argc, char *argv[]){
             }
 
 
-            benchmark_file.open(benchmark_filename, std::ios::app);
-            // benchmark_file << ",";
+            benchmark_file_current.open(benchmark_filename_current, std::ios::app);
+            benchmark_file_B_field.open(benchmark_filename_B_field, std::ios::app);
+            benchmark_file_B_power.open(benchmark_filename_B_power, std::ios::app);
 
             // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
             // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
             // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
             // simulations (when using same mesh)? 
             for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+
+                int material_tag = cell_tag(*cell); 
+                auto material = MaterialFactory::Create(material_tag); 
                 Eigen::Vector2d center_of_triangle;
-                center_of_triangle << 0.5 , 0.5;
-                benchmark_file << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+                center_of_triangle << 0.5 , 0.5; 
+                auto magnetic_flux = mf_curl(*cell, center_of_triangle);
+                Eigen::VectorXd B_field = magnetic_flux[0];
+
+                auto magnetic_flux_previous = mf_curl_previous(*cell, center_of_triangle); 
+                Eigen::VectorXd B_field_previous = magnetic_flux_previous[0];
+
+                Eigen::VectorXd B_dot = (B_field - B_field_previous) / step_size; 
+
+
+                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+
+                benchmark_file_current << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+                benchmark_file_B_field << 0.5 * B_field.dot(B_field )* reluctivity << "," ; 
+                benchmark_file_B_power << reluctivity * B_field.dot(B_dot) + std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
             }
 
-            benchmark_file << std::endl;
-            benchmark_file.close();
+            benchmark_file_current << std::endl;
+            benchmark_file_current.close();
+
+            benchmark_file_B_field << std::endl;
+            benchmark_file_B_field.close();
+
+            benchmark_file_B_power << std::endl;
+            benchmark_file_B_power.close();
+
 
             vtk_writer.WriteCellData("induced-current", induced_current);
             std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
