@@ -286,23 +286,24 @@ std::tuple<Eigen::SparseMatrix<double>,
   LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
                 " N_dofs must agree with number of nodes");
 
+
   lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
   lf::assemble::COOMatrix<double> M(N_dofs, N_dofs);
   
   Eigen::VectorXd phi = Eigen::VectorXd::Constant(N_dofs, 0);
   Eigen::VectorXd phi_boundary = Eigen::VectorXd::Constant(N_dofs, 0);
   
+
   ElemMatProvider elemMatProv (cell_tags, cell_B, fe_space);
   ElemVecProvider elemVecProv (cell_current);
   MassMatProvider massMatProv (cell_conductivity, fe_space);
+
 
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
   lf::assemble::AssembleMatrixLocally(0, dofh, dofh, massMatProv, M);
   lf::assemble::AssembleVectorLocally(0, dofh, elemVecProv, phi);
 
-
   auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
-
   std::vector<std::pair <long, double>> ess_dof_select {};
   for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
     const lf ::mesh::Entity &dof_node{dofh.Entity(dofnum)}; 
@@ -312,7 +313,6 @@ std::tuple<Eigen::SparseMatrix<double>,
       ess_dof_select.emplace_back ( false , 0 ) ; 
     }
   }
-
   lf::assemble::FixFlaggedSolutionComponents([&ess_dof_select, &A, &phi](lf::assemble::glb_idx_t dof_idx) -> std::pair <bool, double> {
     return ess_dof_select[dof_idx];
   }, A, phi);
