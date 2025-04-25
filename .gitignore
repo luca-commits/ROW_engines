@@ -89,8 +89,7 @@ projects/cylinder_test/Analysis/B_field_along_r_0.03_0.8.csv
 projects/cylinder_test/Analysis/B_field_along_0.4_3_box-100.csv
 .vscode/settings.json
 
-*.msh
-*.geo
+
 projects/cylinder_test/meshes/cylinder_spherical_ring.geo
 projects/cylinder_test/meshes/cylinder_spherical_ring.geo
 projects/cylinder_test/meshes/rotating/cylinder_smooth_ring/cylinder_irregular_ring.zip
@@ -124,3 +123,6 @@ projects/cylinder_test/benchmark_file_newton_methods_transformator_current.csv
 projects/cylinder_test/benchmark_file_rosenbrock-wanner_transformator_current.csv
 projects/cylinder_test/benchmark_file_rosenbrock-wanner_transformator_magnetic_field.csv
 projects/cylinder_test/benchmark_file_rosenbrock-wanner_transformator_magnetic_power.csv
+projects/cylinder_test/meshes/rotating/box_irregular_ring/motor (1).msh
+projects/cylinder_test/meshes/rotating/box_irregular_ring/rotor (1).msh
+projects/cylinder_test/meshes/rotating/box_irregular_ring/stator (1).msh
