@@ -63,7 +63,6 @@ public:
             getReluctivity(1e-12);
         }
         double relative_permeability = max_ / (1 + std::pow(B, 4) * max_ / c_) + 1;
-        // std::cout << "B " << B << " relative permeability: " << relative_permeability << std::endl;
         return (1 / relative_permeability) / mu0_;
     }
     

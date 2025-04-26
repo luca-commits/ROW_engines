@@ -17,7 +17,7 @@ std::vector<Eigen::VectorXd> increments(
     ) {
   unsigned x = t_0 / timestep;
 
-  double gamma_ii = 1;//4.3586652150845900e-1; //this is the gamma which defines the method
+  double gamma_ii = 4.3586652150845900e-1; //this is the gamma which defines the method
   std::vector<Eigen::VectorXd> increments;
 
   std::vector<std::vector<double>> gamma = {
@@ -39,7 +39,7 @@ std::vector<Eigen::VectorXd> increments(
     gamma_i.push_back(temp);
   }
 
-  Eigen::SparseMatrix<double> lhs = -timestep * gamma_ii * Jacobian + M;//M - timestep * gamma_ii * Jacobian;
+  Eigen::SparseMatrix<double> lhs = -timestep * gamma_ii * Jacobian + M;
   Eigen::SparseMatrix<double> preconditioner_matrix = -timestep * gamma_ii * Jacobian + M;
   Eigen::SparseLU<Eigen::SparseMatrix<double>> preconditioner;
   std::cout << "computing LU decomposition of preconditioner" << std::endl;
@@ -73,12 +73,9 @@ std::vector<Eigen::VectorXd> increments(
     } else {
       std::cout << " Solution vector is 0 " << std::endl;
     }
-    // std::cout << "relative residuum for incerement " << i << " : " << rel_res
-    //           << std::endl;
 
     increments.push_back(increment);
 
-    // increment_solution.tail(1000) = Eigen::VectorXd::Zero(1000);
     bool debug = 0; 
     if (debug){
         std::string vtk_filename = std::string("vtk_files/time_dependent/debug_") + std::to_string(4*x + i) + std::string(".vtk");

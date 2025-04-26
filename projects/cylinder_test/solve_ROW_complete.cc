@@ -68,7 +68,6 @@ int main (int argc, char *argv[]){
     std::cout << "Geometry type : " << geometry_type << std::endl; 
     double original_step_size = saving_step_size;
 
-
     std::string benchmark_filename_current = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_current.csv");
     std::string benchmark_filename_B_field = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_field.csv");
     std::string benchmark_filename_B_power = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_power.csv");
@@ -227,6 +226,7 @@ int main (int argc, char *argv[]){
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
         lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
+
         // Fill preconditioner conductivity data using the original reader's physical entity numbers
         for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
             // Use the physical entity numbers from the original mesh reading
@@ -237,6 +237,8 @@ int main (int argc, char *argv[]){
         
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
         auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
+
+        // here you have to recover old values in the airgap from boundary values on the rotor and stator
 
         // in a dynamic row method, we need value from previous timestep also in the algebraic domain (airgap). Obviously we don't know values 
         // from previous time-step, since we are re-meshing, but also the solution in air-gap is not time-dependents, so we can instantly 
@@ -262,6 +264,9 @@ int main (int argc, char *argv[]){
 
         }
 
+        // we compute the derivative of the prescribed current and of the motion separately, for the prescribed current we can do this 
+        // analytically, since we know it is sinusoidal, and for the motion component we do this numerically 
+
         lf::mesh::utils::CodimMeshDataSet<double> cell_current_derivative = eddycurrent::getCellCurrent(mesh_p, tag_to_current_derivative, cell_tag);
         Eigen::VectorXd time_derivative = eddycurrent::phi_assembler(mesh_p, cell_current_derivative);        
         Eigen::SparseMatrix<double> N = eddycurrent::N_assembler(mesh_p, cell_tag, mf_curl_temp, mf_grad_temp);
@@ -274,10 +279,14 @@ int main (int argc, char *argv[]){
 
         std::cout << "deformation angle : " << deformation_angle_derivative << std::endl; 
 
+        // create the mesh necessary for A(t + dt):
+
         deform_airgap(mesh_path + "airgap.msh", mesh_path + "deformed_airgap_derivative.msh", deformation_angle_derivative, r, R);
         rotateAllNodes_alt(mesh_path + "rotated_rotor.msh", mesh_path + "rotated_rotor_derivative.msh", deformation_angle_derivative);
         std::string final_mesh_deformed = mesh_path + "motor_derivative.msh";
         numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor_derivative.msh", mesh_path + "deformed_airgap_derivative.msh",final_mesh_deformed);
+
+        // assemble the matrix A(t + dt)
         auto [mesh_p_deformed, cell_current_deformed, cell_conductivity_deformed, cell_tag_deformed] = eddycurrent::readMeshWithTags(final_mesh_deformed, tag_to_current, tag_to_conductivity);
         auto fe_space_deformed = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_deformed);
         const lf::assemble::DofHandler &dofh_derivative{fe_space_deformed->LocGlobMap()};
@@ -285,20 +294,21 @@ int main (int argc, char *argv[]){
         utils::MeshFunctionCurl2DFE mf_curl_deformed(mf_grad_deformed);
         lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner_deformed{mesh_p, 0, -1};
         Eigen::SparseMatrix<double> A_deformed = eddycurrent::A_assembler(mesh_p_deformed, cell_tag_deformed, mf_curl_deformed);
-        std::cout << "Matrix difference norm : " << (A_deformed-A).norm() << std::endl; 
+
+        //compute dA(t)/dt ~= (dA(t + dt) - A(t))/dt
         Eigen::VectorXd motion_derivative = (A_deformed - A) * current_timestep_extended / step_size; 
 
-        std::cout << "motion derivative norm : " << motion_derivative.norm() << std::endl; 
-
+        // since there is no electrical exitation in the airgap, we can separate the motion and exitation current derivative and then sum
+        // them. f(x(t)) = A(t) - phi(t), where A depends on the mesh -> motion derivative, and phi depends on the exitation current. 
+        // => f'(x(t)) = A'(t) - phi'(t)
         time_derivative += motion_derivative; 
-
-        std::cout << "time derivative norm : " << time_derivative.norm() << std::endl; 
-
 
 
         lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tags = cell_tag; 
         std::shared_ptr<const lf::mesh::Mesh> mesh_ps = mesh_p; 
 
+        // this is the function f which defines the ode: 
+        // x'(t) = f(x, t))
         auto  function_evaluator = [&max_current, &exitation_current_parameter, &exitation_current_type, 
                                     &cell_tags, &step_size, &geometry_type, &tag_to_current, &r, &R,
                                     &angular_velocity, &mesh_path, &tag_to_conductivity]( double time, Eigen::VectorXd current_timestep, double previous_timestep_time, int i) 
@@ -325,6 +335,7 @@ int main (int argc, char *argv[]){
 
             double deformation_angle = (time - previous_timestep_time) * angular_velocity;
 
+            // we deform the mesh for every increment and recompute the stiffness and mass matrix, and load vector
 
             deform_airgap(mesh_path + "airgap.msh", mesh_path + "deformed_airgap.msh", deformation_angle, r, R);
             rotateAllNodes_alt(mesh_path + "rotated_rotor.msh", mesh_path + "rotated_rotor_increment_" + std::to_string(i) + ".msh", deformation_angle);
@@ -367,8 +378,12 @@ int main (int argc, char *argv[]){
 
         auto [next_timestep_high, next_timestep_low] = row_step_rotation(step_size, current_time, current_timestep_extended, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
   
+
+        // adaptive timestepping: 
+
         // now I need to compute the difference between the two methods of different order. Since the quantity of interest is the 
         // power lost in the domain, I will use this as a measure of accuracy. The power loss is given by j * E + H * d/dt(B)
+
         double power_high = 0; 
         double power_low = 0; 
 
@@ -400,6 +415,8 @@ int main (int argc, char *argv[]){
         double max_power_difference = 0.0;
         std::vector<double> power_high_cells;
         std::vector<double> power_low_cells;
+
+        // all of this is to find the maximum norm of the power dissipation, still for adaptive timestepping
 
         for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
             const lf::geometry::Geometry *geo_ptr = cell->Geometry();

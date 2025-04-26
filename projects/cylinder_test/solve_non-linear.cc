@@ -114,6 +114,11 @@ int main (int argc, char *argv[]){
     auto mesh_path = std::string(here.remove_filename()) + std::string("meshes/rotating/") + type_of_rotor + "/";
     std::cout << mesh_path;
 
+
+    //there are two types of current: ramp up, which starts at 0, gets to the target current in the time defined
+    //by the exitation current parameter and then stays constant;
+    //and sinusoidal exitation, where the frequency is defined by the extation current parameter
+
     auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double time){
         if (exitation_current_type == "ramp_up"){
             double rate = 1/exitation_current_parameter;
@@ -128,7 +133,13 @@ int main (int argc, char *argv[]){
 
     double rel_angle = 0;
     std::string final_mesh;
+
+    //the number of stable nodes is needed because we create a vector which has only the dimension
+    //of the number of stable nodes, which are tracked between timesteps. The nodes relative to 
+    //the airgap are at the end of the vector
     unsigned numStableNodes;
+
+    //before timestepping, the meshes just need to be merged together
     if(rotating_geometry){
         remeshAirgap(mesh_path + "airgap.geo",  mesh_path + "airgap.msh",  M_PI * rel_angle);
         rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", M_PI * rel_angle);
@@ -143,6 +154,10 @@ int main (int argc, char *argv[]){
 
     std::map<int, double> tag_to_conductivity;
     std::map<int, double> tag_to_conductivity_precoditioner;
+
+    // to construct the preconditioner, I assign a small conductivity to the regions where the conductivity is 0
+    // I then create mass matrix (M) using this conductivity 
+
     if (geometry_type == "transformer"){
         tag_to_conductivity = {{6, conductivity_ring}, {2, 0}, {3, 0}, {4, 0}, {5, 0}};
         tag_to_conductivity_precoditioner = {{6, conductivity_ring}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}, {5, 400*1e-5}};
@@ -177,19 +192,21 @@ int main (int argc, char *argv[]){
     unsigned number_newton_steps = 0; 
     double time = 0; 
     const double PI = 3.141592653589793;
-    double angular_velocity = 10 * (2 * PI); // 1 rotation per second
+    double angular_velocity = 10 * (2 * PI); // 10 rotations per second
   
     for (unsigned i = 1; time <= total_time; ++i, time += step_size){
          std::cout << "time : " << time << std::endl; 
 
         double newton_residual = 1000; 
 
-        // double rel_angle = 0; //angle_step * i;
         double rel_angle = angular_velocity * time; 
 
         std::cout << "angle : " << rel_angle << std::endl;
         std::string final_mesh;
         unsigned numStableNodes;
+
+        // here I remesh and rotate the mesh
+
         if(rotating_geometry){
             remeshAirgap(mesh_path + "airgap.geo", mesh_path + "airgap.msh", rel_angle);
             rotateAllNodes_alt(mesh_path + "rotor.msh", mesh_path + "rotated_rotor.msh", rel_angle);
@@ -211,13 +228,16 @@ int main (int argc, char *argv[]){
         }
         double time = i * step_size; 
         std::cout << "current " << time_to_current(time) << std::endl;
-
+        
+        //different parts have different tags (in the .msh file), so here I create a map from 
+        //tag to the correct current
         if (geometry_type == "transformer"){
             tag_to_current = {{6,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}, {5, -time_to_current(time)}};
         }
         else{
             tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
         }
+
 
         auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
@@ -230,6 +250,8 @@ int main (int argc, char *argv[]){
         Eigen::VectorXd previous_timestep_extended = Eigen::VectorXd::Zero(dofh.NumDofs()); 
 
         std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;  
+
+        // here we construct the complete vector: 
         current_timestep_extended.head(number_stable_dofs) = current_timestep;       
         previous_timestep_extended.head(number_stable_dofs) = previous_timestep; 
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
@@ -256,12 +278,15 @@ int main (int argc, char *argv[]){
             lf::fe::MeshFunctionGradFE<double, double> mf_grad(fe_space, current_newton_step);
             utils::MeshFunctionCurl2DFE mf_curl(mf_grad);
 
+            // N is the matrix relevant for the Jacobian computation (see thesis, there I use the same N)
             auto N = eddycurrent::N_assembler(mesh_p, cell_tag, mf_curl, mf_grad);
-            // std::cout << "current newton step - current timestep norm : " << (current_newton_step - current_timestep).norm() << std::endl;
 
             lf::fe::MeshFunctionGradFE<double, double> mf_grad_current_newton_step(fe_space, current_newton_step); //extended
             utils::MeshFunctionCurl2DFE mf_curl_current_newton_step(mf_grad_current_newton_step);
 
+
+            // assemble the matrices needed for a Newton step, and preconditioner. I could have used a function that only assembles M matrix for 
+            // computation of preconditioner
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_current_newton_step);
             auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
 
@@ -333,7 +358,10 @@ int main (int argc, char *argv[]){
         double rel_residual = (lhs * next_timestep - rhs).norm()  / rhs.norm(); 
 
         if (rhs.norm() > 1e-15) std::cout << "Final newton residual " << rel_residual << std::endl; 
-        //visualize current timestep norm 
+
+
+        // Now comes the part relevant to the visualization and writing the files
+        // which are relevant for benchmarking
         if(i % int(benchmark_original_ratio) == 0){
             std::cout << "writing out visualisation file to " << vtk_filename << std::endl; 
 
@@ -429,12 +457,15 @@ int main (int argc, char *argv[]){
             benchmark_file_current.open(benchmark_filename_current, std::ios::app);
             benchmark_file_B_field.open(benchmark_filename_B_field, std::ios::app);
             benchmark_file_B_power.open(benchmark_filename_B_power, std::ios::app);
-            // benchmark_file << ",";
 
-            // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
+
+            // I want to write the power loss to a file, and compare the power
             // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
-            // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
-            // simulations (when using same mesh)? 
+            // stay the same between simulations. The numbering of the cell doesn't change between
+            // simulations (when using same mesh)
+
+            // create 3 different benchmarks: magnetic energy, power dissipated because of power, 
+            // total power dissipated
             for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
                 int material_tag = cell_tag(*cell); 
                 auto material = MaterialFactory::Create(material_tag); 

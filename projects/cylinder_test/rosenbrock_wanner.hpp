@@ -5,6 +5,9 @@
 #include "increments_no_rotations.hpp"
 #include "increments.hpp"
 
+
+//this function is used for a static geometry
+
 std::tuple<Eigen::VectorXd, Eigen::VectorXd>  row_step(double timestep, 
                         double t_0, 
                         Eigen::VectorXd current_timestep, 
@@ -24,13 +27,15 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd>  row_step(double timestep,
     Eigen::VectorXd next_timestep_low = current_timestep;
     
     for(unsigned i = 0; i < increments.size(); ++i){
-        // std::cout << "increment i norm: " << i << " " << increments[i].norm() << std::endl; 
+
         next_timestep_high += b[i] * increments[i];
         next_timestep_low += b_hat[i] * increments[i]; 
     }
     return {next_timestep_high, next_timestep_low}; 
-    //return {next_timestep_high, next_timestep_low}; 
+
 }
+
+// this function is used for a rotating geometry
 
 std::tuple<Eigen::VectorXd, Eigen::VectorXd>  row_step_rotation(double timestep, 
                         double t_0, 
