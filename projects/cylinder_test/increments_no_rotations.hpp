@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <vector>
+#include "BICG_stab.hpp"
 
 #include "eddycurrent.h"
 
@@ -40,7 +41,7 @@ std::vector<Eigen::VectorXd> increments(
     gamma_i.push_back(temp);
   }
 
-  Eigen::SparseMatrix<double> lhs = -timestep * gamma_ii * Jacobian + M;//M - timestep * gamma_ii * Jacobian;
+  Eigen::SparseMatrix<double> lhs = -timestep * gamma_ii * Jacobian + M; //
   Eigen::SparseMatrix<double> preconditioner_matrix = -timestep * gamma_ii * Jacobian + M;
   Eigen::SparseLU<Eigen::SparseMatrix<double>> preconditioner;
   std::cout << "computing LU decomposition of preconditioner" << std::endl;
@@ -52,11 +53,14 @@ std::vector<Eigen::VectorXd> increments(
     Eigen::VectorXd increments_sum = Eigen::VectorXd::Zero(M.cols());
     Eigen::VectorXd increment_solution = current_timestep;
 
+
+
     for (unsigned j = 0; j < i; ++j) {
       increments_sum += gamma[i - 1][j] * increments[j];
       increment_time += timestep * alpha[i - 1][j];
       increment_solution += increments[j] * alpha[i - 1][j];
     }
+
 
     Eigen::VectorXd rhs = timestep *  f(increment_time, increment_solution, i) +
                           timestep * Jacobian * increments_sum +

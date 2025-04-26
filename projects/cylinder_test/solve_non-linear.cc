@@ -140,7 +140,6 @@ int main (int argc, char *argv[]){
     }
 
     std::map<int, double>      tag_to_current{}; //1 -> air, 2-> cylinder, 3 -> ring, 4 -> airgap
-    // std::map<int, double> tag_to_permeability{{1,1.00000037 * MU_0}, {2,0.999994 * MU_0}, {3, 0.999994 * MU_0}, {4,1.00000037 * MU_0}};
 
     std::map<int, double> tag_to_conductivity;
     std::map<int, double> tag_to_conductivity_precoditioner;
@@ -175,16 +174,19 @@ int main (int argc, char *argv[]){
     Eigen::VectorXd previous_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
 
-    double angle_step = 2 * M_PI / 60;  //360 / 60 = 6 degrees per timestep
     unsigned number_newton_steps = 0; 
     double time = 0; 
+    const double PI = 3.141592653589793;
+    double angular_velocity = 10 * (2 * PI); // 1 rotation per second
   
     for (unsigned i = 1; time <= total_time; ++i, time += step_size){
          std::cout << "time : " << time << std::endl; 
 
         double newton_residual = 1000; 
 
-        double rel_angle = 0; //angle_step * i;
+        // double rel_angle = 0; //angle_step * i;
+        double rel_angle = angular_velocity * time; 
+
         std::cout << "angle : " << rel_angle << std::endl;
         std::string final_mesh;
         unsigned numStableNodes;
@@ -266,7 +268,7 @@ int main (int argc, char *argv[]){
             std::cout << "A norm : " << A.norm() << std::endl; 
 
             if (i == 1 || !bdf2 ) {
-                if (bool debug = 1){
+                if (bool debug = 0){
                     Eigen::VectorXd load = A * current_newton_step; 
                     Eigen::VectorXd rho = phi; 
                     std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load_bdf2_") + std::to_string(i) + std::string(".vtk");
@@ -421,7 +423,9 @@ int main (int argc, char *argv[]){
                 backwards_difference_mesh->operator()(dofh.Entity(global_idx)) = backwards_difference[global_idx];
             }
 
-            
+            std::cout << "benchmark filename current : " << benchmark_filename_current << std::endl; 
+
+
             benchmark_file_current.open(benchmark_filename_current, std::ios::app);
             benchmark_file_B_field.open(benchmark_filename_B_field, std::ios::app);
             benchmark_file_B_power.open(benchmark_filename_B_power, std::ios::app);

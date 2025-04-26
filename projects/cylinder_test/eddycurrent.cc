@@ -326,31 +326,6 @@ std::tuple<Eigen::SparseMatrix<double>,
 }
 
 
-//  std::tuple<Eigen::SparseMatrix<double>, 
-//                   Eigen::VectorXd>
-//   N_rho_assembler
-//   (
-//   std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-//   lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
-//   utils::MeshFunctionCurl2DFE<double, double>  & cell_B,
-//   lf::fe::MeshFunctionGradFE<double, double>  & cell_grad_xn
-//   ){
-//     auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-
-//     const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-//     const lf::base::size_type N_dofs(dofh.NumDofs());
-//     lf::assemble::COOMatrix<double> N(N_dofs, N_dofs);
-//     ElemMat_N_Provider elemMat_N_provider(cell_tags, cell_B, cell_grad_xn);
-//     ElemVec_rho_Provider elemVec_rho_provider(cell_B, cell_tags);
-  
-//     Eigen::VectorXd rho(N_dofs);
-//     lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMat_N_provider, N);
-//     lf::assemble::AssembleVectorLocally(0, dofh, elemVec_rho_provider, rho);
-
-//   const Eigen::SparseMatrix<double> N_crs = N.makeSparse();  
-//   return{N_crs, rho}; 
-// }
-
 Eigen::SparseMatrix<double>
   N_assembler
   (
@@ -422,90 +397,86 @@ Eigen::SparseMatrix<double>
   return A_crs;
 }
 
+std::tuple<Eigen::SparseMatrix<double>, Eigen::VectorXd>
+A_assembler_gap
+(
+    std::shared_ptr<const lf::mesh::Mesh> mesh_p_gap,
+    std::shared_ptr<const lf::mesh::Mesh> mesh_p_motor,
+    lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags,
+    utils::MeshFunctionCurl2DFE<double, double> & cell_B,
+    Eigen::VectorXd motor_values
+) {
+    // Create finite element space on the gap mesh
+    auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_gap);
+    const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+    const lf::base::size_type N_dofs(dofh.NumDofs());
+    
+    LF_ASSERT_MSG(N_dofs == mesh_p_gap->NumEntities(2),
+                " N_dofs must agree with number of nodes");
+    
+    // Create the system matrix
+    lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
+    ElemMatProvider elemMatProv(cell_tags, cell_B, fe_space);
+    
+    // Initialize solution vector with zeros
+    Eigen::VectorXd phi = Eigen::VectorXd::Constant(N_dofs, 0);
+    
+    // Assemble matrix locally
+    lf::assemble::AssembleMatrixLocally(0, dofh, dofh, elemMatProv, A);
+    
+    // Flag boundary entities on the gap mesh
+    auto bd_flags_gap = lf::mesh::utils::flagEntitiesOnBoundary(mesh_p_gap, 2);
+    // Get coordinates of all nodes from the motor mesh
+    std::cout << " mesh_p_motor->NumEntities(2) : " <<  mesh_p_motor->NumEntities(2) << std::endl; 
+    std::cout << " motor_values.size() : " << motor_values.size() << std::endl; 
+    std::vector<std::pair<Eigen::Vector2d, double>> motor_nodes;
+    for (lf::base::size_type i = 0; i < mesh_p_motor->NumEntities(2); ++i) {
+        const lf::mesh::Entity* node_ptr = mesh_p_motor->EntityByIndex(2, i);
+        auto coords = lf::geometry::Corners(*node_ptr->Geometry());
+        motor_nodes.emplace_back(coords.col(0), motor_values[i]);
 
-// Eigen::VectorXd 
-//   rho_assembler
-// (
-//   std::shared_ptr<const lf::mesh::Mesh> mesh_p,
-//   lf::mesh::utils::CodimMeshDataSet<unsigned int> & cell_tags, 
-//   utils::MeshFunctionCurl2DFE<double, double>  & cell_B
-// ){
-//     // auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-//     // const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-//     // const lf::base::size_type N_dofs(dofh.NumDofs());
-//     // ElemVec_rho_Provider elemVec_rho_provider(cell_B, cell_tags);
-//     // Eigen::VectorXd rho(N_dofs);
-//     // lf::assemble::AssembleVectorLocally(0, dofh, elemVec_rho_provider, rho);
-
-//     // auto bd_flags_temp {lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 2)};
-
-//     // for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
-//     //   const lf::mesh::Entity &dof_node{dofh.Entity(dofnum)};
-//     //   if (bd_flags_temp(dof_node)) rho[dofnum] = 0;
-//     // }
-
-//     auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-
-//     const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-
-//     const lf::base::size_type N_dofs(dofh.NumDofs());
-//     LF_ASSERT_MSG(N_dofs == mesh_p -> NumEntities(2),
-//                   " N_dofs must agree with number of nodes");
-
-//     lf::assemble::COOMatrix<double> A(N_dofs, N_dofs);
-
-
-
-//     return rho;
-// }
-
-
-// // This vector is needed for the Newton iteration
-// const Eigen::Matrix<double, 3, 1> ElemVec_rho_Provider::Eval(const lf::mesh::Entity &cell){
-
-//   const lf ::geometry::Geometry *geo_ptr = cell.Geometry();
-//   Eigen::MatrixXd V = lf::geometry::Corners(*geo_ptr);
-//   Eigen::Matrix <double , 2 , 3> X = GradsBaryCoords(V);
-
-//   int material_tag = material_tags_(cell);  
-//   // Create material if we haven't seen this tag before
-//   if (materials_.find(material_tag) == materials_.end()) {
-//       materials_[material_tag] = MaterialFactory::Create(material_tag);
-//   }
-//   const auto& material = materials_[material_tag];
+    }
+    
+    // For each boundary node in the gap mesh, find the closest node in the motor mesh
+    std::vector<std::pair<long, double>> ess_dof_select;
+    const double tolerance = 1e-10; // Tolerance for exact matching
+    
+    for (lf::assemble::gdof_idx_t dofnum = 0; dofnum < N_dofs; ++dofnum) {
+        const lf::mesh::Entity &dof_node = dofh.Entity(dofnum);
+        
+        if (bd_flags_gap(dof_node)) {
+          // Get coordinates of this node
+          auto coords = lf::geometry::Corners(*dof_node.Geometry());
+          Eigen::Vector2d node_coords = coords.col(0);
+          
+          double boundary_value;
+          for (const auto &motor_node : motor_nodes) {
+              double distance = (node_coords - motor_node.first).norm();
+              if (distance < tolerance) {
+                  boundary_value = motor_node.second;
+                  break; 
+              }
+          }
+          
+          ess_dof_select.emplace_back(true, boundary_value);
+        
+                
+        } else {
+            ess_dof_select.emplace_back(false, 0);
+        }
+    }
+    
+    lf::assemble::FixFlaggedSolutionComponents(
+        [&ess_dof_select](lf::assemble::glb_idx_t dof_idx) -> std::pair<bool, double> {
+            return ess_dof_select[dof_idx];
+        }, A, phi);
+  
+    
+    // Convert to CRS format
+    const Eigen::SparseMatrix<double> A_crs = A.makeSparse();
+    return {A_crs, phi};
+}
 
 
-//   // Get the magnetic flux density and compute reluctivity
-//   Eigen::Vector2d center_of_triangle;
-//   center_of_triangle << 0.5 , 0.5; //theoretically the gradient should be constant on the triangle. So I could take any point on the tri
-//                                    //angle, but I'll take [0.5, 0.5]
-//     auto magnetic_flux_result = cell_magnetic_flux_(cell, center_of_triangle);
-//   if (magnetic_flux_result.size() == 0) {
-//       throw std::runtime_error("cell_magnetic_flux_ returned empty result");
-//   }
-//   Eigen::VectorXd B_field = magnetic_flux_result[0];
-
-//   double reluctivity = material->getReluctivity(B_field.norm());
-
-//   Eigen::Vector2d H_field = B_field * reluctivity; 
-
-//   double H_x = H_field[0];
-//   double H_y = H_field[1]; 
-
-//   // std::cout << "B field " << B_field.norm() << std::endl;
-//   // std::cout << "H_x " << H_x << std::endl; 
-//   // std::cout << "H_y " << H_y << std::endl; 
-
-//   Eigen::Vector3d result;
-
-//   Eigen::MatrixXd X_transpose = X.transpose();
-
-//   result << H_x * X_transpose(0, 1) - H_y * X_transpose(0, 0), 
-//             H_x * X_transpose(1, 1) - H_y * X_transpose(1, 0), 
-//             H_x * X_transpose(2, 1) - H_y * X_transpose(2, 0); 
-
-//   double area =  0.5 * std::abs((V(0, 1) - V(0, 0)) * (V(1, 2) - V(1, 1)) - (V(0, 2) - V(0, 1)) * (V(1, 1) - V(1, 0)));
-//   return  area * result; //  area / 3 * result;
-// }
 
 } // namespace eddycurrent

@@ -28,16 +28,14 @@ void rotateAllNodes_alt(const std::string& input_file, const std::string& output
     gmsh::model::mesh::getNodes(nodeTags, coords, parametricCoords);
     
     for (std::size_t i = 0; i < nodeTags.size(); ++i) {
-        // Get original coordinates
+
         double x = coords[i * 3];
         double y = coords[i * 3 + 1];
         double z = coords[i * 3 + 2];
         
-        // Calculate rotated coordinates
         double new_x = x * cosA - y * sinA;
         double new_y = x * sinA + y * cosA;
         
-        // Update node coordinates using setNode
         gmsh::model::mesh::setNode(
             nodeTags[i],
             {new_x, new_y, z} ,             
@@ -48,14 +46,10 @@ void rotateAllNodes_alt(const std::string& input_file, const std::string& output
     gmsh::model::mesh::rebuildNodeCache(false);
     gmsh::write(output_file);
 
-    
-
-// Finalize GMSH
-gmsh::finalize();
+    gmsh::finalize();
 }
 
 void deform_airgap(const std::string& input_file, const std::string& output_file, double angle, double r, double R) {
-    // angle = 0.01;
     gmsh::initialize();
     gmsh::option::setNumber("General.Terminal", 0);
     
@@ -72,11 +66,9 @@ void deform_airgap(const std::string& input_file, const std::string& output_file
     std::vector<double> parametricCoords;
     
     gmsh::model::mesh::getNodes(nodeTags, coords, parametricCoords);
-
-
     
     for (std::size_t i = 0; i < nodeTags.size(); ++i) {
-        // std::cout << "i " << i << std::endl;
+
         // Get original coordinates
         double x = coords[i * 3];
         double y = coords[i * 3 + 1];
@@ -85,8 +77,7 @@ void deform_airgap(const std::string& input_file, const std::string& output_file
         //rotation angle depends on distance from outer border
         double r_x = std::sqrt(x * x + y * y);
         double phi_x = ((r_x - r) / (R - r)) * angle; 
-        // std::cout << "r_x : " << r_x << std::endl; 
-        // std::cout << "phi_x : " << phi_x << std::endl; 
+
         double cosA = std::cos(phi_x);
         double sinA = std::sin(phi_x);
         
@@ -104,10 +95,8 @@ void deform_airgap(const std::string& input_file, const std::string& output_file
 
 
     gmsh::model::mesh::rebuildNodeCache(false);
-    // gmsh::fltk::run();
     gmsh::write(output_file);
 
-    
     // Finalize GMSH
     gmsh::finalize();
 }

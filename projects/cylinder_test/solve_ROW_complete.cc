@@ -12,7 +12,7 @@ int main (int argc, char *argv[]){
 
     std::ifstream infile("xinput_rotating.txt");
     std::string line;
-    double step_size, total_time, max_current, conductivity_ring, exitation_current_parameter, adaptive_rel_tol = 0.1, adaptive_abs_tol = 0.01, strict_ratio = 5.;
+    double saving_step_size, step_size, total_time, max_current, conductivity_ring, exitation_current_parameter, adaptive_rel_tol = 1.2, adaptive_abs_tol = 1e7, strict_ratio = 5.;
     std::string mesh_name, exitation_current_type, timestepping_method, geometry_type;
     bool adaptive; 
     
@@ -48,6 +48,8 @@ int main (int argc, char *argv[]){
     if (!readNextValue(geometry_type)) return 1; 
     if (!readNextValue(timestepping_method)) return 1;
     if (!readNextValue(adaptive)) return 1;
+    if (!readNextValue(saving_step_size)) return 1;
+    
 
     infile.close();
 
@@ -61,16 +63,27 @@ int main (int argc, char *argv[]){
     std::cout << "Excitation Parameter: " << exitation_current_parameter << "\n";
     std::cout << "Timestepping Method: " << "rosenbrock wanner" << "\n";
     std::cout << "Adaptive:  " << adaptive << "\n"; 
+    std::cout << "Saving step size: " << saving_step_size << "\n";
 
     std::cout << "Geometry type : " << geometry_type << std::endl; 
-    double original_step_size = step_size;
+    double original_step_size = saving_step_size;
 
 
-     std::string benchmark_filename = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string(".csv");
+    std::string benchmark_filename_current = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_current.csv");
+    std::string benchmark_filename_B_field = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_field.csv");
+    std::string benchmark_filename_B_power = std::string("benchmark_file_rosenbrock-wanner_") + std::string(mesh_name) + std::string("_magnetic_power.csv");
 
-    std::ofstream benchmark_file(benchmark_filename, std::ios::trunc);
-    benchmark_file << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
-    benchmark_file.close();
+    std::ofstream benchmark_file_current(benchmark_filename_current, std::ios::trunc);
+    benchmark_file_current << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_current.close();
+    
+    std::ofstream benchmark_file_B_field(benchmark_filename_B_field, std::ios::trunc);
+    benchmark_file_B_field << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_B_field.close();
+
+    std::ofstream benchmark_file_B_power(benchmark_filename_B_power, std::ios::trunc);
+    benchmark_file_B_power << "# method: " << "rosenbrock wanner" << ", step size: " << step_size << std::endl; 
+    benchmark_file_B_power.close();
 
     bool rotating_geometry = true;
     if (geometry_type == "transformer") rotating_geometry = false; 
@@ -124,7 +137,7 @@ int main (int argc, char *argv[]){
     std::map<int, double> tag_to_conductivity;
     std::map<int, double> tag_to_conductivity_precoditioner;
     if (geometry_type == "transformer"){
-        tag_to_conductivity = {{6, conductivity_ring}, {2, 0}, {3, 0}, {4, 0}, {5, 0}};
+        tag_to_conductivity = {{6, conductivity_ring}, {2, 0}, {3, conductivity_ring}, {4, 0}, {5, 0}};
         tag_to_conductivity_precoditioner = {{6, conductivity_ring}, {2, 400*1e-5}, {3, 400*1e-5}, {4, 400*1e-5}, {5, 400*1e-5}};
     }
     else{
@@ -159,19 +172,24 @@ int main (int argc, char *argv[]){
         number_stable_dofs = N_dofs; 
     }
 
+    number_stable_dofs += 0;
+    std::cout << "N dofs : " << N_dofs<< std::endl; 
+    std::cout << "N stable dofs : " << number_stable_dofs << std::endl;  
+    
+
     Eigen::VectorXd current_timestep = Eigen::VectorXd::Zero(number_stable_dofs); 
     std::cout << "Conductivity ring: " << conductivity_ring << std::endl;
     const double PI = 3.141592653589793;
 
     double current_time = 0; 
-    double angular_velocity = 10 * (2 * PI); // 1 rotation per second
+    double angular_velocity = 10 * (2 * PI); // 10 rotations per second
     double r = 0.11, R=0.123; //here you have to adjust the inner (r) and outer (R) radius of the airgap
     unsigned i = 0; 
+    double power_norm_previous = 0; 
+    unsigned total_number_of_timesteps = 0; 
     for (; current_time <= total_time;){
 
         double rel_angle = angular_velocity * current_time; 
-         
-        // std::cout << "angle : " << rel_angle << std::endl;
         std::string final_mesh;
         unsigned numStableNodes;
         if(rotating_geometry){
@@ -197,18 +215,17 @@ int main (int argc, char *argv[]){
         auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
         auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
 
-        const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
+        const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};  
 
         Eigen::VectorXd current_timestep_extended =  Eigen::VectorXd::Zero(dofh.NumDofs()); 
+        unsigned number_airgap_dofs = dofh.NumDofs() - number_stable_dofs; 
 
-        std::cout << "current_timestep.norm() " << current_timestep_extended.norm() << std::endl; 
-        current_timestep_extended.head(number_stable_dofs) = current_timestep;       
-        std::cout << "current_timestep.norm() " << current_timestep_extended.norm() << std::endl;  
         std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;  
+        current_timestep_extended.head(number_stable_dofs) = current_timestep;    
+
       
         lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
         utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
-
         lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
         // Fill preconditioner conductivity data using the original reader's physical entity numbers
         for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
@@ -221,8 +238,29 @@ int main (int argc, char *argv[]){
         auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
         auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
 
-        // std::cout << "A norm : " << A.norm() << std::endl ; 
+        // in a dynamic row method, we need value from previous timestep also in the algebraic domain (airgap). Obviously we don't know values 
+        // from previous time-step, since we are re-meshing, but also the solution in air-gap is not time-dependents, so we can instantly 
+        // compute values in the air-gap by using old values on the boundary to rotor and stator as boundary value, and solve a static problem
 
+        if(rotating_geometry){
+            auto [mesh_p_gap, cell_current_gap, cell_conductivity_gap, cell_tag_gap] = eddycurrent::readMeshWithTags( mesh_path + "airgap.msh", tag_to_current, tag_to_conductivity);
+            auto fe_space_gap = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_gap);
+            const lf::assemble::DofHandler &dofh_gap{fe_space_gap->LocGlobMap()};
+            const lf::base::size_type N_dofs_gap(dofh_gap.NumDofs());
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad_gap(fe_space, current_timestep_extended);
+            utils::MeshFunctionCurl2DFE mf_curl_gap(mf_grad_gap);
+            auto [A_gap, rhs] = eddycurrent::A_assembler_gap(mesh_p_gap, mesh_p, cell_tag_gap, mf_curl_gap, current_timestep_extended);
+            Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
+            solver.analyzePattern(A_gap); 
+            solver.factorize(A_gap); 
+            std::cout << "A_gap " << A_gap.norm() << std::endl; 
+            Eigen::VectorXd airgap_nodes = solver.solve(rhs); 
+            std::cout << "N_dofs_gap : " << N_dofs_gap << std::endl; 
+            std::cout << "number_airgap_dofs : " << number_airgap_dofs << std::endl; 
+            std::cout << "airgap_nodes.norm() : " << airgap_nodes.norm() << std::endl; 
+            current_timestep_extended.tail(number_airgap_dofs) = airgap_nodes.tail(number_airgap_dofs); 
+
+        }
 
         lf::mesh::utils::CodimMeshDataSet<double> cell_current_derivative = eddycurrent::getCellCurrent(mesh_p, tag_to_current_derivative, cell_tag);
         Eigen::VectorXd time_derivative = eddycurrent::phi_assembler(mesh_p, cell_current_derivative);        
@@ -230,14 +268,41 @@ int main (int argc, char *argv[]){
 
         Eigen::SparseMatrix<double> jacobian = -(A + N);
 
+        // computing the derivative of the motion component of the A matrix 
+
+        double deformation_angle_derivative = (step_size) * angular_velocity;
+
+        std::cout << "deformation angle : " << deformation_angle_derivative << std::endl; 
+
+        deform_airgap(mesh_path + "airgap.msh", mesh_path + "deformed_airgap_derivative.msh", deformation_angle_derivative, r, R);
+        rotateAllNodes_alt(mesh_path + "rotated_rotor.msh", mesh_path + "rotated_rotor_derivative.msh", deformation_angle_derivative);
+        std::string final_mesh_deformed = mesh_path + "motor_derivative.msh";
+        numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor_derivative.msh", mesh_path + "deformed_airgap_derivative.msh",final_mesh_deformed);
+        auto [mesh_p_deformed, cell_current_deformed, cell_conductivity_deformed, cell_tag_deformed] = eddycurrent::readMeshWithTags(final_mesh_deformed, tag_to_current, tag_to_conductivity);
+        auto fe_space_deformed = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p_deformed);
+        const lf::assemble::DofHandler &dofh_derivative{fe_space_deformed->LocGlobMap()};
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_deformed(fe_space_deformed, current_timestep_extended);
+        utils::MeshFunctionCurl2DFE mf_curl_deformed(mf_grad_deformed);
+        lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner_deformed{mesh_p, 0, -1};
+        Eigen::SparseMatrix<double> A_deformed = eddycurrent::A_assembler(mesh_p_deformed, cell_tag_deformed, mf_curl_deformed);
+        std::cout << "Matrix difference norm : " << (A_deformed-A).norm() << std::endl; 
+        Eigen::VectorXd motion_derivative = (A_deformed - A) * current_timestep_extended / step_size; 
+
+        std::cout << "motion derivative norm : " << motion_derivative.norm() << std::endl; 
+
+        time_derivative += motion_derivative; 
+
+        std::cout << "time derivative norm : " << time_derivative.norm() << std::endl; 
+
+
+
         lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tags = cell_tag; 
         std::shared_ptr<const lf::mesh::Mesh> mesh_ps = mesh_p; 
 
         auto  function_evaluator = [&max_current, &exitation_current_parameter, &exitation_current_type, 
                                     &cell_tags, &step_size, &geometry_type, &tag_to_current, &r, &R,
-                                    &angular_velocity, &mesh_path, &tag_to_conductivity]( double time, Eigen::VectorXd current_timestep_extended,int i) //i is for debugging purposes only
+                                    &angular_velocity, &mesh_path, &tag_to_conductivity]( double time, Eigen::VectorXd current_timestep, double previous_timestep_time, int i) 
                                     -> Eigen::VectorXd {
-
 
             auto time_to_current = [max_current, exitation_current_parameter, exitation_current_type](double time){
                 if (exitation_current_type == "ramp_up"){
@@ -258,26 +323,21 @@ int main (int argc, char *argv[]){
                 tag_to_current = {{1,0},  {2, time_to_current(time)}, {3, 0}, {4, 0}}; 
             }
 
-            double deformation_angle = time * angular_velocity;
+            double deformation_angle = (time - previous_timestep_time) * angular_velocity;
 
-            unsigned numStableNodes;
+
             deform_airgap(mesh_path + "airgap.msh", mesh_path + "deformed_airgap.msh", deformation_angle, r, R);
             rotateAllNodes_alt(mesh_path + "rotated_rotor.msh", mesh_path + "rotated_rotor_increment_" + std::to_string(i) + ".msh", deformation_angle);
             std::string final_mesh = mesh_path + "motor_increment_" + std::to_string(i) + ".msh";
-            numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor_increment_" + std::to_string(i) + ".msh", mesh_path + "deformed_airgap.msh",final_mesh);
+            unsigned numStableNodes = mergeEverything(mesh_path +  "stator.msh", mesh_path + "rotated_rotor_increment_" + std::to_string(i) + ".msh", mesh_path + "deformed_airgap.msh",final_mesh);
             auto [mesh_p, cell_current, cell_conductivity, cell_tag] = eddycurrent::readMeshWithTags(final_mesh, tag_to_current, tag_to_conductivity);
             auto fe_space = std::make_shared<lf::uscalfe::FeSpaceLagrangeO1<double>>(mesh_p);
-
             const lf::assemble::DofHandler &dofh{fe_space->LocGlobMap()};
-        
-            lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep_extended);
-
+            lf::fe::MeshFunctionGradFE<double, double> mf_grad_temp(fe_space, current_timestep);
             utils::MeshFunctionCurl2DFE mf_curl_temp(mf_grad_temp);
-
             lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity_preconditioner{mesh_p, 0, -1};
-
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_temp);
-            Eigen::VectorXd rho = A * current_timestep_extended; 
+            Eigen::VectorXd rho = A * current_timestep; 
 
              if (bool debug = 1){
                 std::string vtk_filename = std::string("vtk_files/time_dependent/debug_rho_load_") + std::to_string(i) + std::string(".vtk");
@@ -305,27 +365,111 @@ int main (int argc, char *argv[]){
 
         };
 
-        auto [next_timestep_high, next_timestep_low] = row_step(step_size, current_time, current_timestep_extended, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
+        auto [next_timestep_high, next_timestep_low] = row_step_rotation(step_size, current_time, current_timestep_extended, jacobian, M, M_preconditioner , time_derivative, function_evaluator, mesh_p);
   
-        double high_low_diff = (next_timestep_high - next_timestep_low).norm(); 
+        // now I need to compute the difference between the two methods of different order. Since the quantity of interest is the 
+        // power lost in the domain, I will use this as a measure of accuracy. The power loss is given by j * E + H * d/dt(B)
+        double power_high = 0; 
+        double power_low = 0; 
+
+        Eigen::VectorXd backwards_difference_high = (next_timestep_high - current_timestep_extended) / step_size;
+        Eigen::VectorXd backwards_difference_low = (next_timestep_low - current_timestep_extended) / step_size;
+
+        lf::fe::MeshFunctionFE<double, double> mf_backwards_difference_high(fe_space, backwards_difference_high); 
+        lf::fe::MeshFunctionFE<double, double> mf_backwards_difference_low(fe_space, backwards_difference_low); 
+
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_previous(fe_space, current_timestep_extended);
+        utils::MeshFunctionCurl2DFE mf_curl_previous(mf_grad_previous);
+
+        lf::mesh::utils::CodimMeshDataSet<double> induced_current_high{mesh_p, 0, -1};
+        lf::mesh::utils::CodimMeshDataSet<double> induced_current_low{mesh_p, 0, -1};
+
+        for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+            Eigen::Vector2d center_of_triangle;
+            center_of_triangle << 0.5 , 0.5; 
+            induced_current_high(*cell) = - mf_backwards_difference_high(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
+            induced_current_low(*cell) = - mf_backwards_difference_low(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
+        }
+
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_high(fe_space, next_timestep_high);
+        utils::MeshFunctionCurl2DFE mf_curl_high(mf_grad_high);
+
+        lf::fe::MeshFunctionGradFE<double, double> mf_grad_low(fe_space, next_timestep_low);
+        utils::MeshFunctionCurl2DFE mf_curl_low(mf_grad_low);
+
+        double max_power_difference = 0.0;
+        std::vector<double> power_high_cells;
+        std::vector<double> power_low_cells;
+
+        for (const lf::mesh::Entity *cell : mesh_p->Entities(0)) {
+            const lf::geometry::Geometry *geo_ptr = cell->Geometry();
+            double area = lf::geometry::Volume(*geo_ptr);
+            int material_tag = cell_tag(*cell);
+            auto material = MaterialFactory::Create(material_tag);
+            Eigen::Vector2d center_of_triangle;
+            center_of_triangle << 0.5, 0.5;
+            
+            auto magnetic_flux_high = mf_curl_high(*cell, center_of_triangle);
+            auto magnetic_flux_low = mf_curl_low(*cell, center_of_triangle);
+            Eigen::VectorXd B_field_high = magnetic_flux_high[0];
+            Eigen::VectorXd B_field_low = magnetic_flux_low[0];
+            auto magnetic_flux_previous = mf_curl_previous(*cell, center_of_triangle);
+            Eigen::VectorXd B_field_previous = magnetic_flux_previous[0];
+            
+            Eigen::VectorXd B_dot_high = (B_field_high - B_field_previous) / step_size;
+            Eigen::VectorXd B_dot_low = (B_field_low - B_field_previous) / step_size;
+            
+            double reluctivity_high = material->getReluctivity(B_field_high.norm());
+            double reluctivity_low = material->getReluctivity(B_field_low.norm());
+            
+            double cell_power_high = reluctivity_high * B_field_high.dot(B_dot_high) + 
+                                    std::pow(mf_backwards_difference_high(*cell, center_of_triangle)[0], 2) * 
+                                    cell_conductivity(*cell);
+            
+            double cell_power_low = reluctivity_low * B_field_low.dot(B_dot_low) + 
+                                std::pow(mf_backwards_difference_low(*cell, center_of_triangle)[0], 2) * 
+                                cell_conductivity(*cell);
+            
+            double power_difference = std::abs(cell_power_high - cell_power_low);
+            max_power_difference = std::max(max_power_difference, power_difference);
+            
+            power_high_cells.push_back(cell_power_high);
+            power_low_cells.push_back(cell_power_low);
+        }
+
+        double max_power_high = *std::max_element(power_high_cells.begin(), power_high_cells.end());
+        std::cout << "Maximum power difference: " << max_power_difference << std::endl;
+
+        double eps = 1e-8;
+
+        double high_low_diff = max_power_difference;
         bool accept = 0; 
         bool strongly_accept = 0; 
-        if (high_low_diff < std::max(adaptive_rel_tol * current_timestep_extended.norm(), adaptive_abs_tol)) {accept = true, ++i;}; 
-        if (high_low_diff < std::max((adaptive_rel_tol / strict_ratio) * current_timestep_extended.norm(), adaptive_abs_tol / strict_ratio)) strongly_accept = true; 
-        if (accept){
-            current_time += step_size;
+        if (high_low_diff < std::max(adaptive_rel_tol * power_norm_previous, adaptive_abs_tol)){ accept = true; }; 
+        std::cout << "strict tolerance : " << std::max(((adaptive_rel_tol) * power_low)/strict_ratio, adaptive_abs_tol / strict_ratio) << std::endl; 
+        if (high_low_diff < std::max(((adaptive_rel_tol) * power_norm_previous) / strict_ratio, adaptive_abs_tol / strict_ratio)) strongly_accept = true; 
+        if (accept || !adaptive){
+            double next_step_mod = int((current_time + step_size + eps)/ original_step_size) - int((current_time + eps)/ original_step_size);
+            std::cout << "next step  mod : " << next_step_mod << std::endl; 
+            std::cout << "current time: " << current_time << std::endl; 
+            current_time = next_step_mod > 0 ? (int((current_time + step_size + eps)/ original_step_size)) * original_step_size : current_time + step_size; 
             std::cout << "step accepted" << std::endl; 
         }
         std::cout << "current_time : " << current_time << std::endl;
-        std::cout << "current timestep norm : " << current_timestep.norm() << std::endl; 
+        std::cout << "original step size << " << original_step_size << std::endl; 
+        std::cout << "current timestep norm : " << power_norm_previous << std::endl; 
         std::cout << "std::fmod(current_time, original_step_size)  " << std::fmod(current_time, original_step_size)   << std::endl; 
 
         //I only want to write out the visualization when the time corresponds to a regular interval such that I can compare results
-        //with newton-iteration based methods
-        if (true){//(std::fmod(current_time, original_step_size) < 1e-12 && accept == true) || !adaptive){
-            // unsigned i = int(current_time / original_step_size);
-            std::string vtk_filename = std::string("vtk_files/time_dependent/row_dynamic/" + mesh_name) + "_" + std::to_string(i) + std::string(".vtk");
-            std::cout << "Writing visulasation file to"<< vtk_filename << std::endl; 
+        //with newton-iteration based methods, so mod is indicator if I am going to overshoot "checkpoint"
+
+        double mod = (current_time + eps)- int((current_time + eps)/ original_step_size) * original_step_size; 
+
+        std::cout << std::setprecision(20) << "mod: " << mod << std::endl; 
+        if (mod <= 2 * eps && (accept == true || !adaptive) ){ 
+            unsigned i = int((current_time + eps)/ original_step_size);
+            std::string vtk_filename = std::string("vtk_files/time_dependent/row_dynamic/" + mesh_name) + "_" + std::to_string(step_size) + "_" + std::to_string(i-1) + std::string(".vtk");
+            std::cout << "Writing visulasation file to "<< vtk_filename << std::endl; 
             lf::io::VtkWriter vtk_writer(mesh_p, vtk_filename);
 
             vtk_writer.setBinary(true);
@@ -387,23 +531,41 @@ int main (int argc, char *argv[]){
                 center_of_triangle << 0.5 , 0.5; 
                 induced_current(*cell) = - mf_backwards_difference(*cell, center_of_triangle)[0] * cell_conductivity(*cell);
             }
+            
 
+            benchmark_file_current.open(benchmark_filename_current, std::ios::app);
+            benchmark_file_B_field.open(benchmark_filename_B_field, std::ios::app);
+            benchmark_file_B_power.open(benchmark_filename_B_power, std::ios::app);
 
-            benchmark_file.open(benchmark_filename, std::ios::app);
-            // benchmark_file << ",";
-
-            // ok now a part that is a bit sketchy but should work. I want to write the power loss to a file, and compare the power
-            // losses of two methods. Since the current is a cell based quantity, I will use the cell numbering, and assume it will 
-            // stay the same between simulations. Actually this isn't sketchy, because why should the numbering change between
-            // simulations (when using same mesh)? 
             for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
+
+                int material_tag = cell_tag(*cell); 
+                auto material = MaterialFactory::Create(material_tag); 
                 Eigen::Vector2d center_of_triangle;
-                center_of_triangle << 0.5 , 0.5;
-                benchmark_file << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+                center_of_triangle << 0.5 , 0.5; 
+                auto magnetic_flux = mf_curl(*cell, center_of_triangle);
+                Eigen::VectorXd B_field = magnetic_flux[0];
+
+                auto magnetic_flux_previous = mf_curl_previous(*cell, center_of_triangle); 
+                Eigen::VectorXd B_field_previous = magnetic_flux_previous[0];
+
+                Eigen::VectorXd B_dot = (B_field - B_field_previous) / step_size; 
+
+                double reluctivity = material->getReluctivity(B_field.lpNorm<Eigen::Infinity>());
+
+                benchmark_file_current << std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
+                benchmark_file_B_field << 0.5 * B_field.dot(B_field )* reluctivity << "," ; 
+                benchmark_file_B_power << reluctivity * B_field.dot(B_dot) + std::pow(mf_backwards_difference(*cell, center_of_triangle)[0], 2) * cell_conductivity(*cell) << "," ; 
             }
 
-            benchmark_file << std::endl;
-            benchmark_file.close();
+            benchmark_file_current << std::endl;
+            benchmark_file_current.close();
+
+            benchmark_file_B_field << std::endl;
+            benchmark_file_B_field.close();
+
+            benchmark_file_B_power << std::endl;
+            benchmark_file_B_power.close();
 
             vtk_writer.WriteCellData("induced-current", induced_current);
             std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
@@ -417,16 +579,18 @@ int main (int argc, char *argv[]){
 
         
         std::cout << "high_low_diff: " << high_low_diff << std::endl; 
-        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep.norm() << std::endl; 
+        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep_extended.norm() << std::endl; 
         if (adaptive){
             if (strongly_accept && step_size < original_step_size && std::fmod(current_time, 2 * step_size) < 1e-12){
-                step_size *= 2;
-                current_timestep = next_timestep_high.head(number_stable_dofs); 
+                step_size *= 1.1;
+                current_timestep = next_timestep_high.head(number_stable_dofs);; 
+                power_norm_previous = std::abs(max_power_high); 
                 std::cout << "step strongly accepted " << std::endl; 
             }
             else if (accept){
-                current_timestep = next_timestep_high.head(number_stable_dofs);  
-                std::cout << "current_timestep_extended norm : " << current_timestep_extended.norm() << std::endl; 
+                current_timestep = next_timestep_high.head(number_stable_dofs);;  
+                power_norm_previous = std::abs(max_power_high); 
+                std::cout << "current_timestep norm : " << current_timestep.norm() << std::endl; 
             }
             else{
                 std::cout << "step rejected " << std::endl;
@@ -435,9 +599,9 @@ int main (int argc, char *argv[]){
             }
         }
         else{
-            current_timestep = next_timestep_high.head(number_stable_dofs); 
-            current_time += step_size; 
+            current_timestep = next_timestep_high.head(number_stable_dofs);;
         }
+        ++total_number_of_timesteps;
         std::cout << std::endl; 
     }
     return 0; 

@@ -35,7 +35,6 @@ public:
     }
 
     double getReluctivity(const double /*B*/) const override {
-        // if (nu_r_ == 0)std::cout << "ring reluctivity : " << nu_r_ << std::endl; 
         return nu0_ * nu_r_;
     }
 
@@ -78,7 +77,7 @@ public:
     }
 
 private:
-    double max_ = 1000; 
+    double max_ = 500; 
     double c_ = 100; 
     double mu0_ = 4 * M_PI * 1e-7;
 };

@@ -19,18 +19,13 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
                                     const Eigen::VectorXd & load_vector,
                                     const Eigen::SparseMatrix<double> M_preconditioner){
 
-    // Eigen::SparseMatrix<double> lhs = timestep * (A) + M;
     Eigen::SparseMatrix<double> lhs = timestep * (A);
-
-
-    Eigen::VectorXd rhs = timestep * load_vector;// M * current_step +
+    Eigen::VectorXd rhs = timestep * load_vector;
 
 
     lf::assemble::dim_t N_dofs = load_vector.size();
     Eigen::VectorXd next_timestep(N_dofs);
     next_timestep.setZero();
-
-    // Eigen::SparseMatrix<double> preconditioner_matrix = (A * timestep + M_preconditioner);
 
     Eigen::SparseMatrix<double> preconditioner_matrix = (A * timestep + M);
 
@@ -39,10 +34,6 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
     preconditioner.compute(preconditioner_matrix);
 
     BiCGstab(lhs, N_dofs, preconditioner, rhs, next_timestep, 1e-7, 1000, 0);
-
-    // Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
-    // solver.compute(lhs);
-    // next_timestep = solver.solve(rhs);
 
     double rel_res = 0.0;
     if (rhs.norm() > 1e-17) {
@@ -54,8 +45,6 @@ Eigen::VectorXd implicit_euler_step(const Eigen::SparseMatrix<double>& A,
     std::cout << "relative residuum euler step: " << rel_res << std::endl; 
     return next_timestep;
 }
-
-
 
 Eigen::VectorXd newton_step(Eigen::SparseMatrix<double>& N,
                             Eigen::SparseMatrix<double>& A, 
