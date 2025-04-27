@@ -1,23 +1,14 @@
 
 # Master Thesis: Adaptive timestepping for the Simulation of Electric Machines
 
-This repository has been forked from the LehrFEM++ repository, all the files relevant to the Master thesis can be found in the folder projects/cylinder_test
-
-
-A standard style for README files
-
-Your README file is normally the first entry point to your code. It should tell people why they should use your module, how they can install it, and how they can use it. Standardizing how you write your README makes creating and maintaining your READMEs easier. Great documentation takes work!
+This repository has been forked from the LehrFEM++ repository, all the files relevant to the Master thesis can be found in the folder [cylinder_test](projects/cylinder_test)
 
 This repository contains:
 
-1. [The specification](spec.md) for how a standard README should look.
-2. A link to [a linter](https://github.com/RichardLitt/standard-readme-preset) you can use to keep your README maintained ([work in progress](https://github.com/RichardLitt/standard-readme/issues/5)).
-3. A link to [a generator](https://github.com/RichardLitt/generator-standard-readme) you can use to create standard READMEs.
-4. [A badge](#badge) to point to this spec.
-5. [Examples of standard READMEs](example-readmes/) - such as this file you are reading.
-
-Standard Readme is designed for open source libraries. Although it’s [historically](#background) made for Node and npm projects, it also applies to libraries in other languages and package managers.
-
+1. The LehrFEM++ library
+2. A program used to solve the Eddy current equation with iterative methods [BDF-1/2](projects/cylinder_test/solve_non-linear.cc)
+3. Programs used to solve the Eddy current equation with ROW methods on a static mesh [ROW-static](projects/cylinder_test/solve_ROW_no_rotation_main.cc) and a rotating mesh [ROW-rotating](projects/cylinder_test/solve_ROW_complete.cc)
+4. A script to compute the L2 norm of a solution computed with iterative methods or ROW [benchmarking](projects/cylinder_test/compute_L2_norm.sh). 
 
 ## Table of Contents
 
@@ -27,42 +18,29 @@ Standard Readme is designed for open source libraries. Although it’s [historic
 
 
 ## Background
+ROW Wanner methods promise to avoid expensive iterations in timestepping, while still having a high order. This repository is used to put ROW on the test for the simulation of Eddy currents in electrical machines. ROW methods have been already used to simulate Eddy currents, but this has been limited to static meshes. Here we adapt the method to rotating geometries. 
 
-Standard Readme started with the issue originally posed by [@maxogden](https://github.com/maxogden) over at [feross/standard](https://github.com/feross/standard) in [this issue](https://github.com/feross/standard/issues/141), about whether or not a tool to standardize readmes would be useful. A lot of that discussion ended up in [zcei's standard-readme](https://github.com/zcei/standard-readme/issues/1) repository. While working on maintaining the [IPFS](https://github.com/ipfs) repositories, I needed a way to standardize Readmes across that organization. This specification started as a result of that.
-
-> Your documentation is complete when someone can use your module without ever
-having to look at its code. This is very important. This makes it possible for
-you to separate your module's documented interface from its internal
-implementation (guts). This is good because it means that you are free to
-change the module's internals as long as the interface remains the same.
-
-> Remember: the documentation, not the code, defines what a module does.
-
-~ [Ken Williams, Perl Hackers](http://mathforum.org/ken/perl_modules.html#document)
-
-Writing READMEs is way too hard, and keeping them maintained is difficult. By offloading this process - making writing easier, making editing easier, making it clear whether or not an edit is up to spec or not - you can spend less time worrying about whether or not your initial documentation is good, and spend more time writing and using code.
-
-By having a standard, users can spend less time searching for the information they want. They can also build tools to gather search terms from descriptions, to automatically run example code, to check licensing, and so on.
-
-The goals for this repository are:
-
-1. A well defined **specification**. This can be found in the [Spec document](spec.md). It is a constant work in progress; please open issues to discuss changes.
-2. **An example README**. This Readme is fully standard-readme compliant, and there are more examples in the `example-readmes` folder.
-3. A **linter** that can be used to look at errors in a given Readme. Please refer to the [tracking issue](https://github.com/RichardLitt/standard-readme/issues/5).
-4. A **generator** that can be used to quickly scaffold out new READMEs. See [generator-standard-readme](https://github.com/RichardLitt/generator-standard-readme).
-5. A **compliant badge** for users. See [the badge](#badge).
 
 ## Install
-
-This project uses [node](http://nodejs.org) and [npm](https://npmjs.com). Go check them out if you don't have them locally installed.
+First, LehrFEM++ needs to be installed, which can be done with CMake. After you clone the repository, create a build folder at the top level, and run CMake: 
 
 ```sh
-$ npm install --global standard-readme-spec
+$ clone https://github.com/luca-commits/ROW_engines
+$ mkdir build
+$ cd build
+$ cmake ..
+```
+Then move the folder of this project and compile the code: 
+
+```sh
+$ cd projects/cylinder_test
+$ make -j16
 ```
 
 ## Usage
 
-This is only a documentation package. You can print out [spec.md](spec.md) to your console:
+The configuration of a simulation is managed with inputs file. 
+* The input of BDF-1/2 is: [input-iterative](xi
 
 ```sh
 $ standard-readme-spec
