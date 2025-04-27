@@ -107,7 +107,7 @@ int main (int argc, char *argv[]){
 
     bool bdf2 = timestepping_method == "bdf_2";
 
-    std::cout << std::endl << "timestep: " << step_size << std::endl;
+    std::cout << "timestep: " << step_size << std::endl;
 
     std::filesystem::path here = __FILE__;
     std::string type_of_rotor = mesh_name;
@@ -289,8 +289,6 @@ int main (int argc, char *argv[]){
             // computation of preconditioner
             auto [A, M, phi] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity, cell_tag, mf_curl_current_newton_step);
             auto [A_preconditioner, M_preconditioner, phi_preconditioner] = eddycurrent::A_M_phi_assembler(mesh_p, cell_current, cell_conductivity_preconditioner, cell_tag, mf_curl_temp);
-
-            std::cout << "A norm : " << A.norm() << std::endl; 
 
             if (i == 1 || !bdf2 ) {
                 if (bool debug = 0){
@@ -505,6 +503,8 @@ int main (int argc, char *argv[]){
 
         previous_timestep = current_timestep_extended.head(number_stable_dofs);
         current_timestep = next_timestep.head(number_stable_dofs);
+        std::cout << std::endl; 
+        std::cout << "----------------- next timestep -----------------" << std::endl; 
         std::cout << std::endl; 
 
     }
