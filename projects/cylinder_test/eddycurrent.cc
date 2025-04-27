@@ -57,8 +57,6 @@ std::tuple<std::shared_ptr<const lf::mesh::Mesh>,
   lf::mesh::utils::CodimMeshDataSet<double> cell_conductivity{mesh_p, 0, -1};
   lf::mesh::utils::CodimMeshDataSet<unsigned> cell_tag{mesh_p, 0, 0};
 
-  // lf::mesh::utils::CodimMeshDataSet<bool> bd_edge_flags{
-  //     lf::mesh::utils::flagEntitiesOnBoundary(mesh_p, 1)};
 
   for (const lf::mesh::Entity *cell : mesh_p -> Entities(0)) {
     LF_ASSERT_MSG(cell->RefEl() == lf::base::RefEl::kTria(),

@@ -1,0 +1,23 @@
+# step size
+6e-5
+# total time
+2e-2       
+# mesh, options: transformator, box_irregular_ring
+transformator
+# max_current
+1e7
+# conductivity     
+5.96e7     
+# exitation type, options: sinusoidal, ramp_up
+sinusoidal
+# exitation current parameter
+50
+# timestepping method, either bdf_1 or bdf_2
+ROW        
+transformer
+#test mode
+0
+#adaptive // this parameter is only considere for Rosenbrock Wanner
+0
+#saving step size, how often benchmark and visualization files are saved
+1e-3
