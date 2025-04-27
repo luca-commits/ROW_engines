@@ -218,8 +218,7 @@ int main (int argc, char *argv[]){
 
         Eigen::VectorXd current_timestep_extended =  Eigen::VectorXd::Zero(dofh.NumDofs()); 
         unsigned number_airgap_dofs = dofh.NumDofs() - number_stable_dofs; 
-
-        std::cout << "current_timestep.norm() " << current_timestep.norm() << std::endl;  
+ 
         current_timestep_extended.head(number_stable_dofs) = current_timestep;    
 
       
@@ -255,11 +254,7 @@ int main (int argc, char *argv[]){
             Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
             solver.analyzePattern(A_gap); 
             solver.factorize(A_gap); 
-            std::cout << "A_gap " << A_gap.norm() << std::endl; 
             Eigen::VectorXd airgap_nodes = solver.solve(rhs); 
-            std::cout << "N_dofs_gap : " << N_dofs_gap << std::endl; 
-            std::cout << "number_airgap_dofs : " << number_airgap_dofs << std::endl; 
-            std::cout << "airgap_nodes.norm() : " << airgap_nodes.norm() << std::endl; 
             current_timestep_extended.tail(number_airgap_dofs) = airgap_nodes.tail(number_airgap_dofs); 
 
         }
@@ -276,8 +271,6 @@ int main (int argc, char *argv[]){
         // computing the derivative of the motion component of the A matrix 
 
         double deformation_angle_derivative = (step_size) * angular_velocity;
-
-        std::cout << "deformation angle : " << deformation_angle_derivative << std::endl; 
 
         // create the mesh necessary for A(t + dt):
 
@@ -322,7 +315,6 @@ int main (int argc, char *argv[]){
                 else{
                     const double PI = 3.141592653589793;
                     return max_current * std::sin(2 * PI * exitation_current_parameter * time);
-                    std::cout << "sine " << std::sin(2 * PI * exitation_current_parameter * time) << std::endl;
                 }
             };
 
@@ -455,34 +447,29 @@ int main (int argc, char *argv[]){
         }
 
         double max_power_high = *std::max_element(power_high_cells.begin(), power_high_cells.end());
-        std::cout << "Maximum power difference: " << max_power_difference << std::endl;
 
         double eps = 1e-8;
 
         double high_low_diff = max_power_difference;
         bool accept = 0; 
         bool strongly_accept = 0; 
+        std::cout << "error estimate: " << high_low_diff << std::endl; 
+        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep_extended.norm() << std::endl; 
+        std::cout << "absolute tolerance: " << adaptive_abs_tol << std::endl; 
         if (high_low_diff < std::max(adaptive_rel_tol * power_norm_previous, adaptive_abs_tol)){ accept = true; }; 
-        std::cout << "strict tolerance : " << std::max(((adaptive_rel_tol) * power_low)/strict_ratio, adaptive_abs_tol / strict_ratio) << std::endl; 
         if (high_low_diff < std::max(((adaptive_rel_tol) * power_norm_previous) / strict_ratio, adaptive_abs_tol / strict_ratio)) strongly_accept = true; 
         if (accept || !adaptive){
             double next_step_mod = int((current_time + step_size + eps)/ original_step_size) - int((current_time + eps)/ original_step_size);
-            std::cout << "next step  mod : " << next_step_mod << std::endl; 
-            std::cout << "current time: " << current_time << std::endl; 
             current_time = next_step_mod > 0 ? (int((current_time + step_size + eps)/ original_step_size)) * original_step_size : current_time + step_size; 
             std::cout << "step accepted" << std::endl; 
         }
         std::cout << "current_time : " << current_time << std::endl;
-        std::cout << "original step size << " << original_step_size << std::endl; 
-        std::cout << "current timestep norm : " << power_norm_previous << std::endl; 
-        std::cout << "std::fmod(current_time, original_step_size)  " << std::fmod(current_time, original_step_size)   << std::endl; 
 
         //I only want to write out the visualization when the time corresponds to a regular interval such that I can compare results
         //with newton-iteration based methods, so mod is indicator if I am going to overshoot "checkpoint"
 
         double mod = (current_time + eps)- int((current_time + eps)/ original_step_size) * original_step_size; 
 
-        std::cout << std::setprecision(20) << "mod: " << mod << std::endl; 
         if (mod <= 2 * eps && (accept == true || !adaptive) ){ 
             unsigned i = int((current_time + eps)/ original_step_size);
             std::string vtk_filename = std::string("vtk_files/time_dependent/row_dynamic/" + mesh_name) + "_" + std::to_string(step_size) + "_" + std::to_string(i-1) + std::string(".vtk");
@@ -595,8 +582,7 @@ int main (int argc, char *argv[]){
         }
 
         
-        std::cout << "high_low_diff: " << high_low_diff << std::endl; 
-        std::cout << "relative tolerance: " << (adaptive_rel_tol / strict_ratio) * current_timestep_extended.norm() << std::endl; 
+
         if (adaptive){
             if (strongly_accept && step_size < original_step_size && std::fmod(current_time, 2 * step_size) < 1e-12){
                 step_size *= 1.1;
@@ -618,7 +604,8 @@ int main (int argc, char *argv[]){
         else{
             current_timestep = next_timestep_high.head(number_stable_dofs);;
         }
-        ++total_number_of_timesteps;
+        ++total_number_of_timesteps; 
+        std::cout << "total number of timesteps: " << total_number_of_timesteps << std::endl; 
         std::cout << std::endl; 
     }
     return 0; 

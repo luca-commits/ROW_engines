@@ -425,8 +425,6 @@ A_assembler_gap
     // Flag boundary entities on the gap mesh
     auto bd_flags_gap = lf::mesh::utils::flagEntitiesOnBoundary(mesh_p_gap, 2);
     // Get coordinates of all nodes from the motor mesh
-    std::cout << " mesh_p_motor->NumEntities(2) : " <<  mesh_p_motor->NumEntities(2) << std::endl; 
-    std::cout << " motor_values.size() : " << motor_values.size() << std::endl; 
     std::vector<std::pair<Eigen::Vector2d, double>> motor_nodes;
     for (lf::base::size_type i = 0; i < mesh_p_motor->NumEntities(2); ++i) {
         const lf::mesh::Entity* node_ptr = mesh_p_motor->EntityByIndex(2, i);
