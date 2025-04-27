@@ -22,16 +22,25 @@ ROW Wanner methods promise to avoid expensive iterations in timestepping, while 
 
 
 ## Install
-
-This project uses [node](http://nodejs.org) and [npm](https://npmjs.com). Go check them out if you don't have them locally installed.
+First, LehrFEM++ needs to be installed, which can be done with CMake. After you clone the repository, create a build folder at the top level, and run CMake: 
 
 ```sh
-$ npm install --global standard-readme-spec
+$ clone https://github.com/luca-commits/ROW_engines
+$ mkdir build
+$ cd build
+$ cmake ..
+```
+Then move the folder of this project and compile the code: 
+
+```sh
+$ cd projects/cylinder_test
+$ make -j16
 ```
 
 ## Usage
 
-This is only a documentation package. You can print out [spec.md](spec.md) to your console:
+The configuration of a simulation is managed with inputs file. 
+* The input of BDF-1/2 is: [input-iterative](xi
 
 ```sh
 $ standard-readme-spec
