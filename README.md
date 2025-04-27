@@ -40,9 +40,9 @@ $ make -j16
 ## Usage
 
 The configuration of a simulation is managed with inputs file. 
-* The input of BDF-1/2 is: [input-iterative](xinput_newton.txt)
-* The input of ROW static mesh is: [input-ROW-static](xinput.txt)
-* The input of ROW rotating mesh is: [input-ROW-rotating](xinput_rotating.txt)
+* The input of BDF-1/2 is: [input-iterative](projects/cylinder_test/xinput_newton.txt)
+* The input of ROW static mesh is: [input-ROW-static](projects/cylinder_test/xinput.txt)
+* The input of ROW rotating mesh is: [input-ROW-rotating](projects/cylinder_test/xinput_rotating.txt)
   
 
 ```sh
