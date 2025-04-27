@@ -18,7 +18,7 @@ This repository contains:
 
 
 ## Background
-ROW Wanner methods promise to avoid expensive iterations in timestepping, while still having a high order. This repository is used to put ROW on the test for the simulation of Eddy currents in electrical machines. ROW methods have been already used to simulate Eddy currents, but this has been limited to static meshes. Here we adapt the method to rotating geometries. 
+ROW Wanner methods promise to avoid expensive iterations in timestepping, while still having a high order. This repository is used to put ROW to the test for the simulation of Eddy currents in electrical machines. ROW methods have been already used to simulate Eddy currents, but this has been limited to static meshes. Here we adapt the method to rotating geometries. 
 
 
 ## Install
