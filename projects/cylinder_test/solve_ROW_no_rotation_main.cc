@@ -365,7 +365,6 @@ int main (int argc, char *argv[]){
         }
 
         double max_power_high = *std::max_element(power_high_cells.begin(), power_high_cells.end());
-        std::cout << "Maximum power difference: " << max_power_difference << std::endl;
 
         double eps = 1e-8;
 
@@ -373,26 +372,21 @@ int main (int argc, char *argv[]){
         bool accept = 0; 
         bool strongly_accept = 0; 
         if (high_low_diff < std::max(adaptive_rel_tol * power_norm_previous, adaptive_abs_tol)){ accept = true; }; 
-        std::cout << "strict tolerance : " << std::max(((adaptive_rel_tol) * power_low)/strict_ratio, adaptive_abs_tol / strict_ratio) << std::endl; 
+        std::cout << "absolute tolerance: " << adaptive_abs_tol << std::endl; 
+        std::cout << "relative tolerance: " << (adaptive_rel_tol) * power_norm_previous << std::endl; 
+        std::cout << "error estimate: " << high_low_diff << std::endl;
         if (high_low_diff < std::max(((adaptive_rel_tol) * power_norm_previous) / strict_ratio, adaptive_abs_tol / strict_ratio)) strongly_accept = true; 
         if (accept || !adaptive){
             double next_step_mod = int((current_time + step_size + eps)/ original_step_size) - int((current_time + eps)/ original_step_size);
-            std::cout << "next step  mod : " << next_step_mod << std::endl; 
-            std::cout << "current time: " << current_time << std::endl; 
             current_time = next_step_mod > 0 ? (int((current_time + step_size + eps)/ original_step_size)) * original_step_size : current_time + step_size; 
             std::cout << "step accepted" << std::endl; 
         }
         std::cout << "current_time : " << current_time << std::endl;
-        std::cout << "original step size << " << original_step_size << std::endl; 
-        std::cout << "current timestep norm : " << power_norm_previous << std::endl; 
-        std::cout << "std::fmod(current_time, original_step_size)  " << std::fmod(current_time, original_step_size)   << std::endl; 
 
         //I only want to write out the visualization when the time corresponds to a regular interval such that I can compare results
         //with newton-iteration based methods, so mod is indicator if I am going to overshoot "checkpoint"
 
         double mod = (current_time + eps)- int((current_time + eps) / original_step_size) * original_step_size; 
-
-        std::cout << std::setprecision(20) << "mod: " << mod << std::endl; 
         if (mod <= 2 * eps && (accept == true || !adaptive) ){ 
             unsigned i = int((current_time + eps)/ original_step_size);
             std::string vtk_filename = std::string("vtk_files/time_dependent/row_static/" + mesh_name) + "_" + std::to_string(step_size) + "_" + std::to_string(i - 1) + std::string(".vtk");
@@ -559,7 +553,6 @@ int main (int argc, char *argv[]){
 
 
             vtk_writer.WriteCellData("induced-current", induced_current);
-            std::cout <<"Backwards difference: " <<  backwards_difference.lpNorm<Eigen::Infinity>() << std::endl; 
 
             vtk_writer.WriteCellData("B", mf_curl);
             vtk_writer.WriteCellData("Conductivity", cell_conductivity);
@@ -569,9 +562,8 @@ int main (int argc, char *argv[]){
             vtk_writer.WriteCellData("power_norm", power_loss_norm);
             vtk_writer.WriteCellData("power_norm_difference", power_loss_norm_difference);
         }
-
-        std::cout << "high_low_diff: " << high_low_diff << std::endl; 
-        std::cout << "relative tolerance: " << (adaptive_rel_tol) * power_norm_previous << std::endl; 
+ 
+        
         if (adaptive){
             if (strongly_accept && step_size < original_step_size){
                 step_size *= 1.1;
