@@ -62,6 +62,8 @@ $ zsh create_folder_structure.sh
 
 ## Running the programs
 
+Copy the configuration files [input-iterative](projects/cylinder_test/xinput_newton.txt), [input-ROW-static](projects/cylinder_test/xinput.txt), [input-ROW-rotating](projects/cylinder_test/xinput_rotating.txt) to the build directory.
+
 To run ROW on a static mesh: 
 ```
 $ ./projects.cylinder_test.row_static
