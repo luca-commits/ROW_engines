@@ -1,14 +1,14 @@
 
 # Master Thesis: Adaptive timestepping for the Simulation of Electric Machines
 
-This repository has been forked from the LehrFEM++ repository, all the files relevant to the Master thesis can be found in the folder projects/cylinder_test
-
-
-A standard style for README files
-
-Your README file is normally the first entry point to your code. It should tell people why they should use your module, how they can install it, and how they can use it. Standardizing how you write your README makes creating and maintaining your READMEs easier. Great documentation takes work!
+This repository has been forked from the LehrFEM++ repository, all the files relevant to the Master thesis can be found in the folder [cylinder_test](projects/cylinder_test)
 
 This repository contains:
+
+1. The LehrFEM++ library
+2. A program used to solve the Eddy current equation with iterative methods [BDF-1/2](projects/cylinder_test/solve_non-linear.cc)
+3. Programs used to solve the Eddy current equation with ROW methods on a static mesh [ROW-static](projects/cylinder_test/solve_ROW_no_rotation_main.cc) and a rotating mesh [ROW-static](projects/cylinder_test/solve_ROW_complete.cc)
+4. 
 
 1. [The specification](spec.md) for how a standard README should look.
 2. A link to [a linter](https://github.com/RichardLitt/standard-readme-preset) you can use to keep your README maintained ([work in progress](https://github.com/RichardLitt/standard-readme/issues/5)).
