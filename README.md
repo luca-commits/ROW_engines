@@ -42,15 +42,16 @@ Then the folder structure needs to be reproduced in the build folder:
 ```
 vtk_files/
 ├── time_dependent/
-│   └── non-linear/
-│       └── box_irregular_ring/
-│           ├── bdf1/
-│           └── bdf2/
-│       └── transformator/
-│           ├── bdf1/
-│           ├── bdf2/
-│       └── row_dynamic/
-│       └── row_static/
+│   ├── non-linear/
+│   │   ├── box_irregular_ring/
+│   │   │   ├── bdf1/
+│   │   │   └── bdf2/
+│   │   └── transformator/
+│   │       ├── bdf1/
+│   │       ├── bdf2/
+│   ├── row_dynamic/
+│   └── row_static/
+
 ```
 which can be done with the following command: 
 ```
@@ -58,6 +59,27 @@ $ zsh create_folder_structure.sh
 ```
 
 ## Usage
+
+## Running the programs
+
+To run ROW on a static mesh: 
+```
+$ ./projects.cylinder_test.row_static
+```
+To run ROW on a rotating mesh:
+```
+$ ./projects.cylinder_test.row_dynamic
+```
+To run BDF-1/2:
+```
+$ ./projects.cylinder_test.solve_non-linear
+```
+
+The number of timesteps and Newton iterations is the last output of the code.
+
+**Important note**: only run a program at once when using rotating geometries. 
+
+## Configuring the Simulation
 
 The configuration of a simulation is managed with inputs file. 
 * The input of BDF-1/2 is: [input-iterative](projects/cylinder_test/xinput_newton.txt)
@@ -131,22 +153,25 @@ Explenation of the arguments:
 * exitation parameter: defines frequency in sinusoidal, and growing time for ramp up
 * adaptive: if 1 ROW will use adaptive timestepping, starting at step size defined by step_size parameter, and fixed timestep otherwise
 
-## Running the programs
 
-To run ROW on a static mesh: 
+
+## Visualizing the simulation
+
+The .vtk files are stored in the respective folders in the build folder. They can be visualized with the Paraview software: https://www.paraview.org/
+
+
+## Computing the Errors: 
+The L2 errors of BDF-2 and ROW can be computed once the baseline (test_mode=1), BDF-2, and ROW have been computed. 
+
+This can be done by running: 
+
 ```
-$ ./projects.cylinder_test.row_static
+zsh compute_L2_norm.sh transformator
 ```
-To run ROW on a rotating mesh:
-```
-$ ./projects.cylinder_test.row_dynamic
-```
-To run BDF-1/2:
-```
-$ ./projects.cylinder_test.solve_non-linear
-```
+
 
 [![Build Status](https://github.com/craffael/lehrfempp/workflows/Continuous%20Integration/badge.svg?branch=master)](https://github.com/craffael/lehrfempp/actions)
+
 
 # LehrFEM++
 Simple C++ Finite Element Framework for research and eduction optimzed for clarity and
